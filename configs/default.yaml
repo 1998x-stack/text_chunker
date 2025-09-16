@@ -1,0 +1,36 @@
+# 全局默认配置
+project:
+  name: text-chunker-demo
+  seed: 42
+  visualize: true              # 是否用 rich 预览
+  export_format: jsonl         # jsonl | txt_dir | both
+
+io:
+  input_path: ./sample.txt     # 文件或目录
+  output_path: ./out/chunks.jsonl
+
+strategy:
+  name: recursive              # fixed | semantic | recursive | structure | llm
+  common:
+    chunk_size: 512            # 以 token 计数更合理（fallback 到字符）
+    chunk_overlap: 80
+    max_chunks: null
+  recursive:
+    separators: ["\n\n", "\n", " ", ""]
+  fixed:
+    use_tokens: true
+  semantic:
+    model_name: sentence-transformers/all-MiniLM-L6-v2
+    min_similarity: 0.62       # 相邻句相似度低于该阈值则断开
+    sentence_window: 1
+  structure:
+    prefer: md                  # md | html | pdf | auto
+    sub_split: true             # 节点过长时递归再切
+  llm:
+    provider: openai            # openai | hf
+    openai_model: gpt-4o-mini
+    hf_model: Qwen/Qwen2.5-7B-Instruct
+    max_chars_per_call: 8000    # 控制单次提示长度
+    system_prompt: |
+      你是一名文本结构工程师。请将输入文本按主题/标题/时间线合理分块，
+      产出 JSON 列表：[{ "title": str|null, "start": int, "end": int }]

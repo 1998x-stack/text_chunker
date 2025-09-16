@@ -1,0 +1,21 @@
+# Core
+pyyaml>=6.0.1
+loguru>=0.7.2
+rich>=13.7.1
+
+# Optional tokenization & embeddings
+tiktoken>=0.7.0
+
+# Semantic chunking (optional but recommended)
+sentence-transformers>=3.0.1
+numpy>=1.26.0
+
+# Structure-based parsing
+beautifulsoup4>=4.12.3
+pypdf>=5.0.0
+markdown-it-py>=3.0.0
+
+# LLM providers (optional)
+openai>=1.46.0
+transformers>=4.44.2
+torch>=2.2.0

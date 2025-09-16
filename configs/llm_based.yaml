@@ -1,0 +1,6 @@
+strategy:
+  name: llm
+  llm:
+    provider: hf
+    hf_model: Qwen/Qwen2.5-7B-Instruct
+    max_chars_per_call: 6000

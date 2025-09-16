@@ -1,0 +1,8 @@
+strategy:
+  name: semantic
+  common:
+    chunk_size: 600
+    chunk_overlap: 100
+  semantic:
+    model_name: sentence-transformers/all-MiniLM-L6-v2
+    min_similarity: 0.65
