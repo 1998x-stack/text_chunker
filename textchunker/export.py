@@ -6,7 +6,8 @@ from .types import Chunk, FileDoc
 
 
 def save_jsonl(path: str, chunks: List[Chunk], source: str) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    dirpath = os.path.dirname(path) or "."
+    os.makedirs(dirpath, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         for c in chunks:
             rec = {"id": c.id, "text": c.text, "start": c.start, "end": c.end, "meta": c.meta, "source": source}

@@ -34,7 +34,8 @@ class SemanticChunker(BaseChunker):
 
         embs = self.model.encode(sents, normalize_embeddings=True)
         chunks: List[Chunk] = []
-        buf, start_char = [], 0
+        buf: List[str] = []
+        start_char = 0
 
         # 预先计算每句的起止字符位置
         offsets = []
@@ -45,48 +46,61 @@ class SemanticChunker(BaseChunker):
             offsets.append((beg, end))
             cursor = end
 
-        def flush(end_char: int):
-            cid = len(chunks)
+        last_end = offsets[0][1]
+
+        def flush(end_char: int, chunk_start: int) -> None:
+            nonlocal buf
             piece = "".join(buf).strip()
             if piece:
-                chunks.append(Chunk(id=cid, text=piece, start=start_char, end=end_char,
+                cid = len(chunks)
+                chunks.append(Chunk(id=cid, text=piece, start=chunk_start, end=end_char,
                                     meta={"strategy": "semantic"}))
+            buf = []
 
         for i, sent in enumerate(sents):
-            buf.append(sent + " ")
-            start_char = offsets[i][0] if not chunks and not buf[:-1] else start_char
-            # 超长直接断
-            if count_tokens("".join(buf)) >= size:
-                end_char = offsets[i][1]
-                flush(end_char)
-                # 重叠回退若干句
-                if overlap > 0 and i > 0:
-                    back_chars = max(0, end_char - overlap)
-                    # 重新起点：找到 back_chars 所在的句开始
-                    j = i
-                    while j >= 0 and offsets[j][0] > back_chars:
-                        j -= 1
-                    buf = [sents[j + 1] + " "] if j + 1 <= i else []
-                    start_char = offsets[j + 1][0] if j + 1 <= i else end_char
-                else:
-                    buf, start_char = [], end_char
-                if max_chunks and len(chunks) >= max_chunks:
-                    break
-                continue
+            sent_start, sent_end = offsets[i]
 
-            # 相似度断点检测（与前 window 句平均相似度）
-            if i >= window:
+            if buf and i >= window:
                 v = embs[i]
                 ctx = embs[i - window:i].mean(axis=0)
                 sim = float(np.dot(v, ctx))
                 if sim < min_sim:
-                    end_char = offsets[i][0]
-                    flush(end_char)
-                    buf, start_char = [sent + " "], offsets[i][0]
+                    flush(sent_start, start_char)
+                    if max_chunks and len(chunks) >= max_chunks:
+                        return chunks
+                    start_char = sent_start
 
-            # 收尾
-            if i == len(sents) - 1 and buf:
-                end_char = offsets[i][1]
-                flush(end_char)
+            if not buf:
+                start_char = sent_start
+
+            buf.append(sent + " ")
+            last_end = sent_end
+
+            if count_tokens("".join(buf)) >= size:
+                flush(last_end, start_char)
+                if max_chunks and len(chunks) >= max_chunks:
+                    break
+
+                if overlap > 0 and i >= 0:
+                    back_chars = max(0, last_end - overlap)
+                    j = i
+                    while j >= 0 and offsets[j][0] > back_chars:
+                        j -= 1
+                    if j + 1 <= i:
+                        buf = [sents[j + 1] + " "]
+                        start_char = offsets[j + 1][0]
+                    else:
+                        buf = []
+                        start_char = last_end
+                else:
+                    buf = []
+                    start_char = last_end
+                continue
+
+            if max_chunks and len(chunks) >= max_chunks:
+                break
+
+        if buf and (not max_chunks or len(chunks) < max_chunks):
+            flush(last_end, start_char)
 
         return chunks

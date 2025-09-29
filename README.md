@@ -34,6 +34,32 @@ python -m textchunker.cli --config configs/llm_based.yaml --strategy llm --provi
 python -m textchunker.cli --strategy llm --provider hf --hf-model Qwen/Qwen2.5-7B-Instruct --input report.md --visualize
 ```
 
+## Hugging Face 语料消融实验
+
+```bash
+# 安装语义模型 + 消融依赖
+pip install -e .[semantic,experiments]
+
+# 在 wikitext-2 验证集上执行网格搜索，并保存指标
+python -m textchunker.experiments.semantic_ablation \
+  --dataset wikitext --subset wikitext-2-raw-v1 --split validation \
+  --max-docs 48 --chunk-sizes 400 600 800 --chunk-overlaps 50 100 \
+  --min-sims 0.58 0.62 0.66 --sentence-windows 1 2 --save-json runs/wikitext_semantic.json
+
+# 仅查看结果表格（不保存）
+python -m textchunker.experiments.semantic_ablation --max-docs 24
+```
+
+脚本会自动从 Hugging Face 下载语料，复用已有语义分块器模型，对 `chunk_size`/`chunk_overlap`/`min_similarity`/`sentence_window`
+四个维度进行网格组合，并输出：
+* `chunks/doc`：每篇文档的平均分块数
+* `avg_chunk_tok`/`p95_tok`：块的平均与 95 分位 token 长度
+* `redundancy`：由于重叠导致的 token 冗余比例
+* `boundary`：触发最大长度截断的块占比
+* `coverage`：分块文本总字符与原文字符比，反映重叠带来的覆盖倍数
+
+若提供 `--save-json`，会将全部指标保存成结构化 JSON，便于进一步画图或对比。
+
 ---
 
 # 设计要点与扩展说明
