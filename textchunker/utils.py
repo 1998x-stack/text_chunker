@@ -24,6 +24,32 @@ def whitespace_sentences(text: str) -> List[str]:
     return [p for p in parts if p]
 
 
+def whitespace_sentences_with_offsets(text: str) -> List[Tuple[str, int, int]]:
+    """Sentence splitting that returns (sentence, start, end) tuples.
+
+    Uses the same regex as whitespace_sentences but tracks character offsets,
+    eliminating the need for text.find() which fails on duplicate sentences.
+    """
+    pat = r'(?<=[。！？!?；;])\s+|(?<=\.)\s+'
+    stripped = text.strip()
+    if not stripped:
+        return []
+    parts = re.split(pat, stripped)
+    offset = text.index(stripped[0]) if stripped else 0
+    results: List[Tuple[str, int, int]] = []
+    cursor = offset
+    for part in parts:
+        if not part:
+            continue
+        start = text.find(part, cursor)
+        if start == -1:
+            start = cursor
+        end = start + len(part)
+        results.append((part, start, end))
+        cursor = end
+    return results
+
+
 def clamp(n: int, a: int, b: int) -> int:
     return max(a, min(n, b))
 
