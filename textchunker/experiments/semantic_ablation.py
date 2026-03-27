@@ -16,6 +16,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     load_dataset = None
 from rich.console import Console
+from rich.progress import Progress
 from rich.table import Table
 
 from ..chunkers import *  # noqa: F401,F403 - ensure chunkers register themselves
@@ -327,26 +328,41 @@ def run_semantic_ablation(args: argparse.Namespace | None = None) -> List[Ablati
     logger.info("Running %d scenarios", len(scenarios))
 
     results: List[AblationMetrics] = []
-    for scenario in scenarios:
-        logger.info(
-            "Scenario chunk_size=%s overlap=%s min_sim=%.2f window=%s",
-            scenario.chunk_size,
-            scenario.chunk_overlap,
-            scenario.min_similarity,
-            scenario.sentence_window,
-        )
-        metrics = evaluate_scenario(chunker, scenario, texts)
-        results.append(metrics)
+    with Progress() as progress:
+        task = progress.add_task("Running scenarios...", total=len(scenarios))
+        for scenario in scenarios:
+            logger.info(
+                "Scenario chunk_size=%s overlap=%s min_sim=%.2f window=%s",
+                scenario.chunk_size,
+                scenario.chunk_overlap,
+                scenario.min_similarity,
+                scenario.sentence_window,
+            )
+            metrics = evaluate_scenario(chunker, scenario, texts)
+            results.append(metrics)
+            progress.advance(task)
 
     console = Console()
     console.print(render_table(results))
 
     if args.save_json:
+        import csv
         path = Path(args.save_json)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as f:
             json.dump([r.to_dict() for r in results], f, indent=2, ensure_ascii=False)
         logger.info("Saved metrics to %s", path)
+
+        # Also save CSV
+        csv_path = path.with_suffix(".csv")
+        with csv_path.open("w", newline="", encoding="utf-8") as csvf:
+            writer = csv.DictWriter(csvf, fieldnames=list(results[0].to_dict().keys()))
+            writer.writeheader()
+            for r in results:
+                flat = r.to_dict()
+                flat.update(flat.pop("scenario"))
+                writer.writerow(flat)
+        logger.info("Saved CSV to %s", csv_path)
 
     return results
 
