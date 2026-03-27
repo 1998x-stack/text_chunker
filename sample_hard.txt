@@ -1,0 +1,296 @@
+第一章：深度学习的数学基础
+
+在讨论神经网络之前，我们需要理解几个关键的数学概念。线性代数、概率论和微积分构成了深度学习的三大基石。
+
+1.1 向量空间与矩阵运算
+
+给定向量 v = [v₁, v₂, ..., vₙ] ∈ ℝⁿ，我们定义其 L₂ 范数为：
+‖v‖₂ = √(v₁² + v₂² + ... + vₙ²)
+
+矩阵乘法 C = A × B 满足结合律但不满足交换律：(AB)C = A(BC)，但 AB ≠ BA。
+
+在Transformer架构中，注意力机制的核心计算为：
+Attention(Q, K, V) = softmax(QKᵀ / √dₖ) · V
+
+其中 Q（查询）、K（键）、V（值）分别由输入 X 经过线性变换得到：
+Q = XWQ, K = XWK, V = XWV
+
+1.2 概率与信息论
+
+交叉熵损失函数（Cross-Entropy Loss）是分类任务中最常用的目标函数：
+H(p, q) = -Σᵢ p(xᵢ) log q(xᵢ)
+
+KL散度（Kullback-Leibler Divergence）衡量两个概率分布之间的差异：
+DKL(P ‖ Q) = Σᵢ P(xᵢ) log(P(xᵢ) / Q(xᵢ))
+
+贝叶斯定理在后验推断中的应用：P(θ|D) = P(D|θ)P(θ) / P(D)
+
+---
+
+Chapter 2: The Architecture of Modern Language Models
+
+The transformer architecture, introduced by Vaswani et al. in "Attention Is All You Need" (2017), revolutionized natural language processing. Unlike recurrent neural networks (RNNs) and long short-term memory networks (LSTMs), transformers process all positions in a sequence simultaneously through self-attention mechanisms.
+
+2.1 Multi-Head Attention
+
+Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions:
+
+MultiHead(Q, K, V) = Concat(head₁, ..., headₕ)Wᴼ
+where headᵢ = Attention(QWᵢQ, KWᵢK, VWᵢV)
+
+Each attention head operates on a subspace of dimension dₖ = dmodel / h, where h is the number of heads. This mechanism enables the model to capture different types of relationships: syntactic dependencies in some heads, semantic similarities in others, and positional patterns in yet others.
+
+2.2 Position Encoding and Rotary Embeddings
+
+Since transformers lack inherent positional awareness, positional information must be injected. The original paper used sinusoidal encodings:
+
+PE(pos, 2i) = sin(pos / 10000^(2i/dmodel))
+PE(pos, 2i+1) = cos(pos / 10000^(2i/dmodel))
+
+Modern models like LLaMA and Qwen use Rotary Position Embeddings (RoPE), which encode position through rotation matrices applied to query and key vectors. RoPE has the elegant property that the dot product between two position-encoded vectors depends only on their relative position, not absolute positions.
+
+2.3 The Scaling Laws
+
+Kaplan et al. (2020) discovered that language model performance follows power-law scaling with respect to three factors:
+
+L(N) ∝ N^(-αN), where N is the number of parameters
+L(D) ∝ D^(-αD), where D is the dataset size
+L(C) ∝ C^(-αC), where C is the compute budget
+
+The Chinchilla scaling law (Hoffmann et al., 2022) refined this, suggesting that for compute-optimal training, model size and data should be scaled roughly equally.
+
+---
+
+第三章：检索增强生成（RAG）系统设计
+
+RAG（Retrieval-Augmented Generation）通过将外部知识库与大语言模型结合，显著提升了模型在知识密集型任务上的表现。一个典型的RAG系统包含以下组件：
+
+3.1 文档预处理与分块策略
+
+文本分块（Text Chunking）是RAG流水线中最关键的步骤之一。分块质量直接影响：
+- 检索精度：过大的分块导致噪声信息过多，过小的分块丢失上下文
+- 生成质量：分块边界不当会截断关键信息
+- 系统效率：分块大小影响向量数据库的存储和检索性能
+
+最佳实践建议：
+- 对于问答系统：200-400 tokens
+- 对于摘要任务：800-1200 tokens
+- 对于通用RAG应用：400-600 tokens（"甜蜜区间"）
+
+3.2 向量检索与重排序
+
+向量检索通常使用近似最近邻搜索（ANN）算法，常见实现包括：
+
+HNSW（Hierarchical Navigable Small World）：构建多层图结构，在高层快速定位候选区域，在底层精确搜索。时间复杂度 O(log N)，空间复杂度 O(N · M)，其中 M 为每个节点的最大连接数。
+
+IVF（Inverted File Index）：将向量空间聚类为 nlist 个Voronoi单元，查询时仅搜索最近的 nprobe 个单元。
+
+重排序（Reranking）使用交叉编码器（Cross-Encoder）对初筛结果进行精排：
+score(q, d) = CrossEncoder(concat(q, [SEP], d))
+
+这种两阶段检索策略在保持效率的同时显著提升了检索质量。
+
+3.3 幻觉检测与可信度评估
+
+大语言模型的"幻觉"（Hallucination）问题是RAG系统面临的主要挑战。幻觉可分为：
+1. 内在幻觉：模型生成与输入矛盾的内容
+2. 外在幻觉：模型生成无法从输入验证的内容
+
+缓解策略包括：自洽性检查（Self-Consistency）、基于NLI的事实验证、以及引用追踪机制。
+
+---
+
+Chapter 4: Production Engineering for AI Systems
+
+Deploying AI systems at scale requires careful consideration of infrastructure, monitoring, and reliability. This chapter covers the engineering practices that bridge the gap between research prototypes and production systems.
+
+4.1 Serving Infrastructure
+
+Model serving architectures have evolved significantly:
+
+**Synchronous serving**: Each request gets a dedicated inference pass. Simple but inefficient for batching.
+
+**Continuous batching** (Orca, 2022): Dynamically groups incoming requests and processes them together, significantly improving GPU utilization. Key metrics:
+- Time to First Token (TTFT): < 200ms for interactive applications
+- Inter-Token Latency (ITL): < 50ms for streaming responses
+- Throughput: Measured in tokens/second across all concurrent requests
+
+**Speculative decoding**: Uses a smaller "draft" model to generate candidate tokens, then verifies them in parallel with the main model. Can achieve 2-3x speedup without quality degradation.
+
+4.2 Quantization and Optimization
+
+Reducing model precision from FP32 to lower bit-widths dramatically improves inference efficiency:
+
+| Precision | Bits/Param | Memory Reduction | Quality Impact |
+|-----------|-----------|-----------------|----------------|
+| FP32      | 32        | Baseline        | None           |
+| FP16      | 16        | 2x              | Negligible     |
+| INT8      | 8         | 4x              | <1% degradation|
+| INT4      | 4         | 8x              | 1-3% degradation|
+| GPTQ/AWQ  | 3-4       | 8-10x           | 1-2% degradation|
+
+Advanced techniques like GPTQ (Frantar et al., 2022) and AWQ (Lin et al., 2023) use calibration data to minimize quantization error, achieving near-lossless compression at 4-bit precision.
+
+4.3 Observability and Monitoring
+
+Production AI systems require comprehensive monitoring across multiple dimensions:
+
+```python
+# Example: Structured logging for inference pipeline
+import structlog
+
+logger = structlog.get_logger()
+
+@track_latency
+def process_query(query: str, context: List[str]) -> str:
+    logger.info("query_received",
+                query_length=len(query),
+                context_chunks=len(context),
+                model="qwen-max")
+
+    # Retrieve relevant documents
+    docs = retriever.search(query, top_k=5)
+    logger.info("retrieval_complete",
+                docs_found=len(docs),
+                max_score=docs[0].score if docs else 0)
+
+    # Generate response
+    response = llm.generate(query, docs)
+    logger.info("generation_complete",
+                response_tokens=count_tokens(response),
+                latency_ms=elapsed_ms)
+
+    return response
+```
+
+Key metrics to monitor:
+- P50/P95/P99 latency distributions
+- Token throughput (input + output tokens/second)
+- Cache hit rates (KV cache, embedding cache)
+- Error rates by error type (timeout, rate limit, invalid input)
+- Quality metrics (relevance scores, hallucination rates)
+
+---
+
+第五章：实验设计与评估方法论
+
+5.1 消融实验（Ablation Study）
+
+消融实验通过系统性地移除或修改系统组件来量化每个组件的贡献。在RAG系统中，典型的消融维度包括：
+
+| 维度 | 变量 | 典型范围 |
+|------|------|---------|
+| 分块大小 | chunk_size | 128, 256, 512, 1024 |
+| 分块重叠 | chunk_overlap | 0, 50, 100, 200 |
+| 相似度阈值 | min_similarity | 0.55, 0.60, 0.65, 0.70 |
+| 检索数量 | top_k | 3, 5, 10, 20 |
+| 温度参数 | temperature | 0.0, 0.3, 0.7, 1.0 |
+
+5.2 评估指标体系
+
+定量评估：
+- BLEU（Bilingual Evaluation Understudy）：基于n-gram精确率
+- ROUGE-L：基于最长公共子序列
+- BERTScore：基于BERT嵌入的语义相似度
+- Faithfulness：生成内容与源文档的事实一致性
+
+人工评估：
+- 信息完整性（1-5分）
+- 事实准确性（二元判断）
+- 语言流畅度（1-5分）
+- 有用性排名（对比评估）
+
+5.3 统计显著性与置信区间
+
+使用Bootstrap方法计算评估指标的95%置信区间：
+
+1. 从测试集中有放回地抽样 B 次（B ≥ 1000）
+2. 对每次抽样计算评估指标
+3. 取第 2.5% 和第 97.5% 分位数作为置信区间
+4. 使用 paired bootstrap test 进行系统间比较
+
+p值 < 0.05 时认为差异具有统计学显著性。注意：统计显著性不等于实际显著性（practical significance），需要同时报告效果量（effect size）。
+
+---
+
+Appendix A: Code Patterns and Best Practices
+
+A.1 The Registry Pattern
+
+The Factory + Registry pattern enables extensible, pluggable architectures:
+
+```python
+from typing import Dict, Type, TypeVar
+
+T = TypeVar('T')
+_REGISTRY: Dict[str, Type[T]] = {}
+
+def register(name: str):
+    def decorator(cls: Type[T]) -> Type[T]:
+        _REGISTRY[name.lower()] = cls
+        return cls
+    return decorator
+
+def create(name: str, *args, **kwargs) -> T:
+    if name not in _REGISTRY:
+        raise KeyError(f"Unknown: {name}. Available: {list(_REGISTRY)}")
+    return _REGISTRY[name](*args, **kwargs)
+```
+
+A.2 Error Handling Hierarchy
+
+```python
+class ChunkerError(Exception):
+    """Base exception for all chunking errors."""
+    pass
+
+class ConfigError(ChunkerError):
+    """Raised when configuration is invalid."""
+    pass
+
+class ProviderError(ChunkerError):
+    """Raised when an external provider (API/model) fails."""
+    pass
+```
+
+A.3 The Singleton Pattern for Stats Collection
+
+```python
+class StatsCollector:
+    _instance = None
+
+    @classmethod
+    def instance(cls) -> 'StatsCollector':
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def reset(self):
+        self.metrics = {}
+        self.timings = {}
+```
+
+This pattern ensures consistent metric collection across the entire pipeline without passing collector instances through every function call.
+
+---
+
+附录 B：常见问题排查
+
+Q1: 为什么语义分块模式下重复句子的偏移量不正确？
+A1: 旧版本使用 text.find(sentence, cursor) 查找句子位置，当文本中存在重复句子时，find() 可能返回错误的位置。新版本使用 whitespace_sentences_with_offsets() 函数，通过累积游标精确追踪每个句子的起始和结束位置。
+
+Q2: DashScope API 调用失败怎么办？
+A2: 检查以下几点：
+- DASHSCOPE_API_KEY 环境变量是否正确设置（通过 source ~/.zshrc 加载）
+- API 基础URL是否正确：https://dashscope.aliyuncs.com/compatible-mode/v1
+- 模型名称是否正确：qwen-max（LLM）或 text-embedding-v3（嵌入）
+- 网络连接是否正常，是否需要代理设置
+
+Q3: 如何添加自定义分块策略？
+A3: 三步完成：
+1. 在 textchunker/chunkers/ 下创建新模块
+2. 使用 @register("strategy_name") 装饰器注册
+3. 在 textchunker/chunkers/__init__.py 中添加导入
+
+Q4: Token计数与字符计数的关系？
+A4: 对于英文文本，平均约 1 token ≈ 4 字符。对于中文文本，每个汉字通常占 1-2 个 token。混合语言文本的比例介于两者之间。tiktoken 编码器提供精确的 token 计数。
