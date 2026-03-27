@@ -1,86 +1,220 @@
+# Text-Chunker
 
-# 使用方法
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## 安装
+A pluggable, production-ready text chunking framework for RAG (Retrieval-Augmented Generation) applications. Supports 5 chunking strategies with YAML configuration, CLI interface, DashScope/LLM integration, and comprehensive experimentation tools.
 
-```bash
-git clone <your-repo> text-chunker
-cd text-chunker
-pip install -e .
-# 或按需安装可选功能：
-# pip install -e .[semantic,token,structure,llm]
+## Features
+
+- **5 Chunking Strategies**: Fixed-size, Recursive, Semantic, Structure-based, LLM-based
+- **Factory + Registry Pattern**: Add new strategies with a single `@register` decorator
+- **DashScope Integration**: `qwen-max` for LLM chunking, `text-embedding-v3` for semantic embeddings
+- **YAML + CLI Configuration**: Flexible config with runtime overrides
+- **Advanced Logging**: Loguru-based structured logging with JSON file sinks and rotation
+- **Statistics System**: Pipeline metrics, strategy comparison, historical run tracking
+- **Rich Visualization**: Terminal-based chunk preview with tables and statistics
+- **Experiment Framework**: Grid-search ablation studies on HuggingFace datasets
+- **Multi-format Input**: TXT, Markdown, HTML, PDF
+- **Docker Support**: Multi-stage build with docker-compose
+
+## Architecture
+
+```
+CLI (cli.py) -> Config (YAML + CLI args) -> Settings -> Logging Setup
+      |
+  Reader (txt/md/html/pdf) -> FileDoc
+      |
+  Factory -> Registry Lookup -> Chunker Instance
+      |
+  +- FixedChunker (char/token sliding window)
+  +- RecursiveChunker (separator-priority recursive split)
+  +- SemanticChunker (embedding similarity breakpoints)
+  +- StructureChunker (heading-based sections)
+  +- LLMChunker (DashScope/HF model-proposed spans)
+      |
+  Stats Collection -> Visualization -> Export (JSONL/TXT)
 ```
 
-## 快速试跑
+## Quick Start
 
 ```bash
-# 递归分块 + 可视化
-python -m textchunker.cli --config configs/default.yaml --input ./docs/sample.md --visualize
+# Install with all extras
+pip install -e ".[all,dev]"
 
-# 固定窗口（覆盖 YAML）
-python -m textchunker.cli --config configs/default.yaml --strategy fixed --input sample.txt --visualize
+# Basic chunking
+python -m textchunker.cli --config configs/default.yaml --input your_file.txt --visualize
 
-# 语义分块（需要 sentence-transformers/torch）
-python -m textchunker.cli --config configs/semantic.yaml --input long_article.txt --visualize
-
-# 基于文档结构（Markdown 标题优先）
-python -m textchunker.cli --strategy structure --input ./docs/handbook.md --visualize
-
-# 基于 LLM（OpenAI）：需设置 OPENAI_API_KEY
-export OPENAI_API_KEY=sk-...
-python -m textchunker.cli --config configs/llm_based.yaml --strategy llm --provider openai --input report.md --visualize
-
-# 基于 LLM（HuggingFace 本地/远端模型）
-python -m textchunker.cli --strategy llm --provider hf --hf-model Qwen/Qwen2.5-7B-Instruct --input report.md --visualize
+# With statistics
+python -m textchunker.cli --input doc.txt --strategy recursive --stats
 ```
 
-## Hugging Face 语料消融实验
+## Strategy Guide
+
+| Strategy | Best For | Key Params |
+|----------|----------|------------|
+| `fixed` | Uniform chunks, simple use cases | `chunk_size`, `chunk_overlap`, `use_tokens` |
+| `recursive` | General-purpose (recommended default) | `chunk_size`, `chunk_overlap`, `separators` |
+| `semantic` | Topic-aware splitting | `min_similarity`, `sentence_window`, `model_name` |
+| `structure` | Documents with headings (MD/HTML) | `prefer` (md/html/auto), `sub_split` |
+| `llm` | Complex documents needing understanding | `provider`, `llm_model`, `system_prompt` |
+
+## Configuration
+
+### YAML Config (`configs/default.yaml`)
+
+```yaml
+settings:
+  api_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  llm_model: "qwen-max"
+  embedding_model: "text-embedding-v3"
+
+logging:
+  level: INFO
+  json: false
+  log_dir: logs/
+  rotation: "10 MB"
+
+strategy:
+  name: recursive
+  common:
+    chunk_size: 512
+    chunk_overlap: 80
+```
+
+### CLI Reference
 
 ```bash
-# 安装语义模型 + 消融依赖
-pip install -e .[semantic,experiments]
+python -m textchunker.cli \
+    --config configs/default.yaml \   # YAML config file
+    --input docs/ \                   # Input file or directory
+    --output out/chunks.jsonl \       # Output path
+    --strategy semantic \             # Override strategy
+    --chunk-size 600 \                # Override chunk size
+    --chunk-overlap 100 \             # Override overlap
+    --visualize \                     # Show Rich preview
+    --stats \                         # Enable statistics
+    --log-level DEBUG \               # Log verbosity
+    --max-chunks 50                   # Limit output chunks
+```
 
-# 在 wikitext-2 验证集上执行网格搜索，并保存指标
+## Python API
+
+```python
+from textchunker.config import load_yaml, to_project_config
+from textchunker.factory import create_chunker
+
+cfg = to_project_config(load_yaml("configs/default.yaml"))
+chunker = create_chunker(cfg.strategy)
+chunks = chunker.chunk("Your text here...")
+
+for c in chunks:
+    print(f"[{c.start}:{c.end}] {c.text[:50]}...")
+```
+
+## Experiments
+
+### Semantic Ablation
+
+```bash
 python -m textchunker.experiments.semantic_ablation \
-  --dataset wikitext --subset wikitext-2-raw-v1 --split validation \
-  --max-docs 48 --chunk-sizes 400 600 800 --chunk-overlaps 50 100 \
-  --min-sims 0.58 0.62 0.66 --sentence-windows 1 2 --save-json runs/wikitext_semantic.json
-
-# 仅查看结果表格（不保存）
-python -m textchunker.experiments.semantic_ablation --max-docs 24
+    --dataset wikitext --subset wikitext-2-raw-v1 --split validation \
+    --chunk-sizes 400 600 800 --min-sims 0.58 0.62 0.66 \
+    --save-json results/semantic_ablation.json
 ```
 
-脚本会自动从 Hugging Face 下载语料，复用已有语义分块器模型，对 `chunk_size`/`chunk_overlap`/`min_similarity`/`sentence_window`
-四个维度进行网格组合，并输出：
-* `chunks/doc`：每篇文档的平均分块数
-* `avg_chunk_tok`/`p95_tok`：块的平均与 95 分位 token 长度
-* `redundancy`：由于重叠导致的 token 冗余比例
-* `boundary`：触发最大长度截断的块占比
-* `coverage`：分块文本总字符与原文字符比，反映重叠带来的覆盖倍数
+### Recursive Ablation
 
-若提供 `--save-json`，会将全部指标保存成结构化 JSON，便于进一步画图或对比。
+```bash
+python -m textchunker.experiments.recursive_ablation \
+    --chunk-sizes 256 512 800 --chunk-overlaps 0 50 100 \
+    --save-json results/recursive_ablation.json
+```
 
----
+### Strategy Comparison
 
-# 设计要点与扩展说明
+```bash
+python -m textchunker.experiments.strategy_comparison \
+    --strategies fixed recursive --max-docs 32 \
+    --save-json results/comparison.json
+```
 
-* **Factory & Registry**：`@register("name")` 装饰器把新策略注册到全局 `_REGISTRY`，`create_chunker` 通过 `name` 实例化。新增策略时仅需在 `chunkers/` 下新建文件并 `@register` 即可热插拔接入。
-* **YAML + CLI 覆盖**：`configs/*.yaml` 提供团队级默认，实验时通过 CLI 快速覆盖关键参数（策略名、模型名、阈值等）。
-* **LLM 分块**：`providers/llm.py` 抽象了 `BaseLLMProvider`，目前实现了 `OpenAIProvider/HFProvider`；解析采用“防御式 JSON 提取”，稳定性更高。
-* **Rich 可视化**：`visualization.py` 用表格展示分块数量、字符长度、跨度与预览，有利于调参与审查。
-* **结构化分块**：对 Markdown 按 `#` 标题切段；HTML 已在 reader 中转为纯文本（工程中可替换为更强的 by\_title/DOM 切分）。
-* **语义分块**：句子级嵌入 + 相邻相似度断点，参数 `min_similarity` 可结合你语料分布网格搜索；过长时也会受 `chunk_size` 裁断。
-* **固定分块**：为稳健性，默认按字符切（生产可把 `tiktoken` 的编码位置信息用于精准 token 切片）。
+## Development
 
----
+```bash
+make install      # Install with all extras
+make test         # Run tests with coverage
+make lint         # Run flake8 + mypy
+make format       # Format with isort + black
+make benchmark    # Benchmark strategies
+make experiment   # Run ablation experiments
+make ci           # Full CI pipeline
+```
 
-# 下一步可加的插件（留好扩展口）
+### Docker
 
-* **Parent-Child / Auto-Merging**：检索阶段按叶子块召回、返回父级更大上下文。
-* **Sentence-Window Retrieval**：检索后扩展上下文窗口。
-* **代码/表格感知分块**：以函数/表格为原子单元，避免被切断。
-* **版面解析器**：对 PDF 使用版面理解（如 `unstructured`/GROBID）获取更可靠的章节层级。
+```bash
+make docker-build                           # Build image
+docker-compose up                           # Run with docker-compose
+docker run -e DASHSCOPE_API_KEY=$DASHSCOPE_API_KEY textchunker:latest \
+    --config configs/default.yaml --input /app/input/doc.txt
+```
 
----
+### Adding a New Strategy
 
-需要我帮你加一个**评测子模块（RAGAS/TruLens 指标）**和**参数网格脚本**吗？我可以在这个骨架上继续补：`evaluators/` + `experiments/`，一键比较 `size/overlap/threshold`，并把可视化做成 `rich` 的仪表板。
+```python
+# textchunker/chunkers/my_strategy.py
+from textchunker.registry import register
+from textchunker.chunkers.base import BaseChunker
+
+@register("my_strategy")
+class MyChunker(BaseChunker):
+    def chunk(self, text: str) -> List[Chunk]:
+        # Your implementation here
+        ...
+```
+
+Then import it in `textchunker/chunkers/__init__.py`.
+
+## Environment Variables
+
+| Variable | Purpose | Required |
+|----------|---------|----------|
+| `DASHSCOPE_API_KEY` | DashScope API authentication | For LLM/embedding strategies |
+
+## Project Structure
+
+```
+textchunker/
+├── cli.py                 # CLI entry point
+├── config.py              # YAML/CLI configuration
+├── settings.py            # Settings dataclass
+├── log_config.py          # Loguru setup
+├── stats.py               # Statistics collection
+├── exceptions.py          # Custom exceptions
+├── factory.py             # Chunker factory
+├── registry.py            # Strategy registry
+├── types.py               # Data structures
+├── utils.py               # Token counting, sentence splitting
+├── readers.py             # Multi-format file reading
+├── export.py              # JSONL/TXT export
+├── visualization.py       # Rich terminal output
+├── chunkers/              # Strategy implementations
+│   ├── fixed.py
+│   ├── recursive.py
+│   ├── semantic.py
+│   ├── structure.py
+│   └── llm_based.py
+├── providers/             # LLM & embedding backends
+│   ├── dashscope_provider.py
+│   ├── embeddings.py
+│   └── llm.py
+└── experiments/           # Ablation & comparison tools
+    ├── semantic_ablation.py
+    ├── recursive_ablation.py
+    └── strategy_comparison.py
+```
+
+## License
+
+MIT
