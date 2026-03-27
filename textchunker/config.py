@@ -45,9 +45,21 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--max-chunks", type=int, default=None,
                    help="限制返回的最大分块数")
     # LLM provider 及模型覆盖
-    p.add_argument("--provider", type=str, default=None, help="openai/hf")
+    p.add_argument("--provider", type=str, default=None, help="dashscope/hf")
     p.add_argument("--openai-model", type=str, default=None)
     p.add_argument("--hf-model", type=str, default=None)
+    # Logging
+    p.add_argument("--log-level", type=str, default=None,
+                   help="Log level: TRACE/DEBUG/INFO/WARNING/ERROR")
+    # Stats
+    p.add_argument("--stats", action="store_true", help="Enable statistics collection")
+    p.add_argument("--stats-dir", type=str, default=None, help="Directory for stats output")
+    # DashScope
+    p.add_argument("--llm-model", type=str, default=None, help="LLM model name (default: qwen-max)")
+    p.add_argument("--embedding-model", type=str, default=None, help="Embedding model (default: text-embedding-v3)")
+    # Chunk params
+    p.add_argument("--chunk-size", type=int, default=None, help="Override chunk_size")
+    p.add_argument("--chunk-overlap", type=int, default=None, help="Override chunk_overlap")
     return p
 
 
@@ -69,4 +81,12 @@ def merge_cli(cfg: ProjectConfig, args: argparse.Namespace) -> ProjectConfig:
         cfg.strategy.llm["openai_model"] = args.openai_model
     if args.hf_model:
         cfg.strategy.llm["hf_model"] = args.hf_model
+    if getattr(args, 'chunk_size', None) is not None:
+        cfg.strategy.common["chunk_size"] = args.chunk_size
+    if getattr(args, 'chunk_overlap', None) is not None:
+        cfg.strategy.common["chunk_overlap"] = args.chunk_overlap
+    if getattr(args, 'llm_model', None):
+        cfg.strategy.llm["llm_model"] = args.llm_model
+    if getattr(args, 'embedding_model', None):
+        cfg.strategy.semantic["embedding_model"] = args.embedding_model
     return cfg

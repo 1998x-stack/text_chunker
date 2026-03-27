@@ -1,0 +1,63 @@
+Introduction to Text Chunking
+
+Text chunking is a fundamental technique in natural language processing (NLP) and information retrieval systems. It involves breaking down large documents into smaller, manageable pieces called "chunks" that can be independently processed, indexed, and retrieved. This technique is particularly important in the context of Retrieval-Augmented Generation (RAG) applications, where the quality of text chunks directly impacts the relevance and accuracy of generated responses.
+
+The Evolution of Chunking Strategies
+
+Early approaches to text chunking relied on simple fixed-size splitting, where documents were divided into equal-length segments regardless of content boundaries. While straightforward to implement, this method often produced chunks that split sentences mid-thought, leading to loss of semantic coherence.
+
+Recursive chunking emerged as an improvement, using a hierarchy of separators (paragraph breaks, newlines, spaces) to find natural splitting points. This approach preserves more of the document's original structure while still maintaining controllable chunk sizes.
+
+Semantic chunking represents the next evolution, using embedding models to identify topic boundaries within text. By computing similarity scores between consecutive sentences or paragraphs, semantic chunkers can detect where the topic shifts and place chunk boundaries accordingly. This produces chunks that are semantically coherent, even when the document lacks clear structural markers.
+
+Structure-based chunking leverages the inherent organization of formatted documents. For Markdown files, this means splitting on headings; for HTML, on semantic tags. This approach is particularly effective for well-structured documents like documentation, technical manuals, and academic papers.
+
+LLM-based chunking is the most sophisticated approach, using large language models to understand document content and propose intelligent chunk boundaries. Models like Qwen can analyze the text's meaning, identify logical sections, and produce high-quality chunks that respect both semantic and structural boundaries.
+
+Key Metrics for Evaluating Chunking Quality
+
+Several metrics help evaluate the effectiveness of a chunking strategy:
+
+1. Redundancy Ratio: Measures how much content overlap exists between chunks. Some overlap is intentional (chunk_overlap parameter) to maintain context continuity, but excessive redundancy wastes storage and computation.
+
+2. Coverage Ratio: Indicates whether all source content is represented in the chunks. A coverage ratio below 1.0 means some content was lost; above 1.0 indicates overlap.
+
+3. Boundary Rate: The percentage of chunks that reach the maximum allowed size. A high boundary rate suggests the chunk_size parameter may be too small for the content.
+
+4. Token Distribution: The statistical distribution of chunk sizes (measured in tokens) reveals how uniformly the chunking strategy splits content. Low standard deviation indicates consistent chunk sizes.
+
+Practical Considerations
+
+When choosing a chunking strategy for production systems, several factors must be considered:
+
+Performance: Fixed and recursive chunkers operate in linear time with minimal memory overhead. Semantic chunkers require embedding computation, adding latency proportional to the number of sentences. LLM-based chunkers are the slowest due to API call overhead but produce the highest quality results.
+
+Cost: Local strategies (fixed, recursive, structure) are free to run. Semantic chunking with local models (sentence-transformers) adds GPU/CPU cost. DashScope API-based strategies incur per-token charges for both embedding (text-embedding-v3) and LLM (qwen-max) calls.
+
+Quality vs Speed Tradeoff: For real-time applications, recursive chunking with well-tuned parameters often provides the best balance. For batch processing where quality is paramount, LLM-based chunking with manual review produces superior results.
+
+Chunk Size Selection: The optimal chunk size depends on the downstream task. For question answering, smaller chunks (200-400 tokens) tend to improve precision. For summarization, larger chunks (800-1200 tokens) preserve more context. For general RAG applications, 400-600 tokens is a common sweet spot.
+
+Implementation Architecture
+
+The text-chunker framework uses a Factory + Registry pattern that makes it easy to add new strategies:
+
+The Registry maintains a mapping from strategy names to chunker classes. Each chunker class is decorated with @register("name") which adds it to the global registry at import time.
+
+The Factory receives a strategy name and configuration, looks up the corresponding class in the registry, and instantiates it with the provided settings.
+
+This architecture supports hot-swapping strategies at runtime through YAML configuration or CLI arguments, making it ideal for experimentation and A/B testing of different chunking approaches.
+
+The DashScope Integration
+
+DashScope is Alibaba Cloud's AI service platform that provides OpenAI-compatible APIs. The text-chunker framework integrates with DashScope through two providers:
+
+DashScopeProvider: Handles LLM-based chunking by sending text to qwen-max and parsing the returned JSON span proposals. It uses the OpenAI Python SDK with a custom base URL pointing to DashScope's compatible endpoint.
+
+DashScopeEmbeddingProvider: Computes text embeddings using the text-embedding-v3 model for semantic chunking. Embeddings are normalized to unit length for consistent cosine similarity computation.
+
+Both providers read the DASHSCOPE_API_KEY from environment variables, following the principle of never hardcoding credentials in source code.
+
+Conclusion
+
+Text chunking is not a one-size-fits-all problem. The optimal approach depends on document characteristics, downstream application requirements, and operational constraints. The text-chunker framework provides a flexible, extensible platform for experimenting with and deploying multiple chunking strategies, backed by comprehensive metrics and experiment tools for informed decision-making.
