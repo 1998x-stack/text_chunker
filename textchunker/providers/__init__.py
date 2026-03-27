@@ -1,2 +1,4 @@
-from .llm import OpenAIProvider, HFProvider, BaseLLMProvider
-__all__ = ["OpenAIProvider", "HFProvider", "BaseLLMProvider"]
+from .llm import BaseLLMProvider, HFProvider
+from .dashscope_provider import DashScopeProvider
+
+__all__ = ["BaseLLMProvider", "DashScopeProvider", "HFProvider"]
