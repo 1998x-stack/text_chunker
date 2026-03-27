@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  chunker:
+    build: .
+    environment:
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+    volumes:
+      - ./input:/app/input
+      - ./output:/app/output
+      - ./logs:/app/logs
+      - ./stats:/app/stats
+      - ./configs:/app/configs
+    command: >
+      --config configs/default.yaml
+      --input input/
+      --output output/chunks.jsonl
+      --visualize
+      --stats
