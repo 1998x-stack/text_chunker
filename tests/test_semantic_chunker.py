@@ -64,3 +64,16 @@ def test_semantic_chunker_applies_max_chunks_limit():
     chunks = chunker.chunk(text)
 
     assert len(chunks) == 2
+
+
+def test_semantic_chunker_handles_duplicate_sentences():
+    """Duplicate sentences should have correct, non-overlapping offsets."""
+    text = "Hello world. Hello world. Goodbye world."
+    chunker = SemanticChunker(_strategy_cfg())
+    chunks = chunker.chunk(text)
+    for c in chunks:
+        assert c.start >= 0
+        assert c.end <= len(text)
+        assert c.start < c.end
+    starts = [c.start for c in chunks]
+    assert len(starts) == len(set(starts))
