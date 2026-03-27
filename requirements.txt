@@ -3,10 +3,10 @@ pyyaml>=6.0.1
 loguru>=0.7.2
 rich>=13.7.1
 
-# Optional tokenization & embeddings
+# Tokenization
 tiktoken>=0.7.0
 
-# Semantic chunking (optional but recommended)
+# Semantic chunking
 sentence-transformers>=3.0.1
 numpy>=1.26.0
 
@@ -15,10 +15,18 @@ beautifulsoup4>=4.12.3
 pypdf>=5.0.0
 markdown-it-py>=3.0.0
 
-# LLM providers (optional)
+# LLM providers (DashScope-compatible)
 openai>=1.46.0
 transformers>=4.44.2
 torch>=2.2.0
 
 # Experiment utilities
 datasets>=2.20.0
+
+# Dev tools
+pytest>=8.0.0
+pytest-cov>=5.0.0
+flake8>=7.0.0
+mypy>=1.8.0
+isort>=5.13.0
+black>=24.0.0
