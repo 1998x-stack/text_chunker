@@ -12,3 +12,6 @@ results/
 .DS_Store
 *.swp
 *.swo
+.claude/settings.local.json
+.coverage
+out/
