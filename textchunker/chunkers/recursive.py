@@ -1,99 +1,137 @@
+"""Separator-aware chunking with lossless Unicode source spans."""
+
 from __future__ import annotations
 
 from typing import List
 
 from loguru import logger
 
+from ..core.spans import Span
+from ..core.token_budget import largest_fitting_end, overlap_start
+from ..core.validation import validate_parameters
 from ..exceptions import ChunkerError
-from ..types import Chunk
 from ..registry import register
-from .base import BaseChunker
+from ..types import Chunk
 from ..utils import count_tokens
+from .base import BaseChunker
+
+
+def _merge_spans(text: str, spans: List[Span], size: int) -> List[Span]:
+    """Greedily merge contiguous segments without exceeding token budget."""
+    merged: List[Span] = []
+    for span in spans:
+        if merged and merged[-1].end != span.start:
+            raise ChunkerError("A recursive split introduced a source gap")
+        if merged and count_tokens(text[merged[-1].start:span.end]) <= size:
+            previous = merged.pop()
+            merged.append(Span(previous.start, span.end))
+        else:
+            merged.append(span)
+    return merged
+
+
+def _split_span(text: str, start: int, end: int,
+                seps: List[str], size: int) -> List[Span]:
+    if start == end:
+        return []
+    if count_tokens(text[start:end]) <= size:
+        return [Span(start, end)]
+
+    if not seps or seps[0] == "":
+        results: List[Span] = []
+        cursor = start
+        while cursor < end:
+            # Limit the search to this source interval, not later document text.
+            stop = largest_fitting_end(text[:end], cursor, size, count_tokens)
+            results.append(Span(cursor, stop))
+            cursor = stop
+        return results
+
+    sep = seps[0]
+    units: List[Span] = []
+    cursor = start
+    while cursor < end:
+        idx = text.find(sep, cursor, end)
+        stop = idx + len(sep) if idx != -1 else end
+        units.append(Span(cursor, stop))
+        cursor = stop
+
+    if len(units) == 1:
+        return _split_span(text, start, end, seps[1:], size)
+
+    refined: List[Span] = []
+    for item in units:
+        if count_tokens(item.extract(text)) <= size:
+            refined.append(item)
+        else:
+            refined.extend(_split_span(text, item.start, item.end,
+                                       seps[1:], size))
+    return _merge_spans(text, refined, size)
+
+
+def _split_spans(text: str, seps: List[str], size: int) -> List[Span]:
+    if not text:
+        return []
+    return _split_span(text, 0, len(text), seps, size)
 
 
 def _split_by_separators(text: str, seps: List[str], size: int) -> List[str]:
-    """Recursively split text by separator priority until chunks fit within size."""
-    if count_tokens(text) <= size or not seps:
-        return [text]
-    sep = seps[0]
-    parts = text.split(sep) if sep else list(text)
-    chunks: List[str] = []
-    buf = ""
-    for i, p in enumerate(parts):
-        piece = buf + (p + sep if i < len(parts) - 1 else p)
-        if count_tokens(piece) <= size:
-            buf = piece
-        else:
-            if buf:
-                chunks.append(buf)
-            if count_tokens(p) > size:
-                chunks.extend(_split_by_separators(p, seps[1:], size))
-                buf = ""
-            else:
-                buf = p + (sep if i < len(parts) - 1 else "")
-    if buf:
-        chunks.append(buf)
-    out: List[str] = []
-    for ch in chunks:
-        if count_tokens(ch) > size and len(seps) > 1:
-            out.extend(_split_by_separators(ch, seps[1:], size))
-        else:
-            out.append(ch)
-    return out
+    """Legacy helper retained for structure chunker and external callers."""
+    return [span.extract(text) for span in _split_spans(text, seps, size)]
 
 
 def _build_offset_map(text: str, parts: List[str]) -> List[int]:
-    """Build start offsets for each part using cumulative cursor.
-
-    This is safe for duplicate parts because the cursor only moves forward.
-    """
+    """Strict cumulative offsets: missing or reordered content is an error."""
     offsets: List[int] = []
     cursor = 0
     for part in parts:
-        idx = text.find(part, cursor)
-        if idx == -1:
-            idx = cursor
-        offsets.append(idx)
-        cursor = idx + len(part)
+        if not text.startswith(part, cursor):
+            raise ChunkerError("Parts do not match contiguous source text")
+        offsets.append(cursor)
+        cursor += len(part)
+    if cursor != len(text):
+        raise ChunkerError("Parts did not cover the entire source text")
     return offsets
+
+
+def add_bounded_overlap(text: str, chunks: List[Chunk], size: int,
+                        overlap: int, same_title_only: bool = False) -> None:
+    """Mutate chunk offsets/text, preserving span integrity and size limits."""
+    if not overlap:
+        return
+    for index in range(1, len(chunks)):
+        prev, cur = chunks[index - 1], chunks[index]
+        if same_title_only and prev.meta.get("title") != cur.meta.get("title"):
+            continue
+        begin = overlap_start(text, prev.start, cur.start, cur.end,
+                              overlap, size, count_tokens)
+        cur.start = begin
+        cur.text = text[begin:cur.end]
 
 
 @register("recursive")
 class RecursiveChunker(BaseChunker):
-    """Recursive chunker: splits by paragraph > line > word > character priority."""
+    """Paragraph > line > word > Unicode character splitting."""
 
     def chunk(self, text: str) -> List[Chunk]:
-        c = self.cfg.common
-        r = self.cfg.recursive
-        size = int(c.get("chunk_size", 512))
-        overlap = int(c.get("chunk_overlap", 80))
-        seps = list(r.get("separators", ["\n\n", "\n", " ", ""]))
-        max_chunks = c.get("max_chunks")
+        common = self.cfg.common
+        size = int(common.get("chunk_size", 512))
+        overlap = int(common.get("chunk_overlap", 80))
+        max_chunks = common.get("max_chunks")
+        validate_parameters(size, overlap, max_chunks)
+        seps = list(self.cfg.recursive.get(
+            "separators", ["\n\n", "\n", " ", ""]
+        ))
 
-        if not text.strip():
-            return []
-
-        parts = _split_by_separators(text, seps, size)
-        offsets = _build_offset_map(text, parts)
-
-        chunks: List[Chunk] = []
-        for i, part in enumerate(parts):
-            start = offsets[i]
-            end = start + len(part)
-            chunks.append(Chunk(
-                id=len(chunks), text=part, start=start, end=end,
-                meta={"strategy": "recursive"},
-            ))
-            if max_chunks and len(chunks) >= max_chunks:
-                break
-
-        if overlap > 0 and len(chunks) > 1:
-            for i in range(1, len(chunks)):
-                prev, cur = chunks[i - 1], chunks[i]
-                head_start = max(cur.start - overlap, prev.start)
-                head = text[head_start:cur.start]
-                cur.text = head + cur.text
-                cur.start = head_start
-
-        logger.info("Recursive chunking: {} chunks, size={}, overlap={}", len(chunks), size, overlap)
+        spans = _split_spans(text, seps, size)
+        if max_chunks is not None:
+            spans = spans[:max_chunks]
+        chunks = [
+            Chunk(id=i, text=span.extract(text), start=span.start,
+                  end=span.end, meta={"strategy": "recursive"})
+            for i, span in enumerate(spans)
+        ]
+        add_bounded_overlap(text, chunks, size, overlap)
+        logger.info("Recursive chunking: {} chunks, size={}, overlap={}",
+                    len(chunks), size, overlap)
         return chunks

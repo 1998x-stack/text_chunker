@@ -1,93 +1,91 @@
+"""Embedding-based boundaries followed by strict deterministic budgeting."""
+
 from __future__ import annotations
 
 from typing import List
 
-import numpy as np  # type: ignore
 from loguru import logger
-from sentence_transformers import SentenceTransformer  # type: ignore
 
-from ..exceptions import ChunkerError
-from ..types import Chunk
-from ..utils import whitespace_sentences_with_offsets, count_tokens
+from ..core.validation import validate_parameters
 from ..registry import register
+from ..types import Chunk
+from ..utils import count_tokens, whitespace_sentences_with_offsets
 from .base import BaseChunker
+from .recursive import _split_by_separators, add_bounded_overlap
 
 
 @register("semantic")
 class SemanticChunker(BaseChunker):
-    """Semantic chunker: merges sentences by embedding similarity."""
-
     def __init__(self, cfg):
         super().__init__(cfg)
-        model_name = self.cfg.semantic.get("model_name", "sentence-transformers/all-MiniLM-L6-v2")
+        from sentence_transformers import SentenceTransformer
+
+        model_name = cfg.semantic.get(
+            "model_name", "sentence-transformers/all-MiniLM-L6-v2"
+        )
         logger.info("Loading sentence-transformers model: {}", model_name)
         self.model = SentenceTransformer(model_name)
 
     def chunk(self, text: str) -> List[Chunk]:
-        c = self.cfg.common
-        s = self.cfg.semantic
-        size = int(c.get("chunk_size", 600))
-        overlap = int(c.get("chunk_overlap", 100))
-        min_sim = float(s.get("min_similarity", 0.62))
-        window = int(s.get("sentence_window", 1))
-        max_chunks = c.get("max_chunks")
+        if not text:
+            return []
+        import numpy as np
 
-        sent_data = whitespace_sentences_with_offsets(text)
-        if not sent_data:
-            return [Chunk(id=0, text=text, start=0, end=len(text), meta={"strategy": "semantic"})]
+        common, options = self.cfg.common, self.cfg.semantic
+        size = int(common.get("chunk_size", 600))
+        overlap = int(common.get("chunk_overlap", 100))
+        max_chunks = common.get("max_chunks")
+        validate_parameters(size, overlap, max_chunks)
+        min_similarity = float(options.get("min_similarity", 0.62))
+        window = int(options.get("sentence_window", 1))
+        if not -1.0 <= min_similarity <= 1.0:
+            raise ValueError("min_similarity must be in [-1, 1]")
+        if window <= 0:
+            raise ValueError("sentence_window must be positive")
 
-        sents = [sd[0] for sd in sent_data]
-        offsets = [(sd[1], sd[2]) for sd in sent_data]
+        sentence_spans: List[tuple[int, int]] = []
+        for sentence, start, _ in whitespace_sentences_with_offsets(text):
+            # A single enormous sentence must also obey budget.
+            pieces = (_split_by_separators(
+                sentence, ["\n\n", "\n", " ", ""], size)
+                if count_tokens(sentence) > size else [sentence])
+            cursor = start
+            for piece in pieces:
+                sentence_spans.append((cursor, cursor + len(piece)))
+                cursor += len(piece)
 
-        embs = self.model.encode(sents, normalize_embeddings=True)
+        sentences = [text[start:end].strip()
+                     for start, end in sentence_spans]
+        embs = self.model.encode(sentences, normalize_embeddings=True)
         chunks: List[Chunk] = []
-        buf_indices: List[int] = []
+        buf_start: int | None = None
 
-        def flush() -> None:
-            if not buf_indices:
+        def flush(end: int) -> None:
+            nonlocal buf_start
+            if buf_start is None:
                 return
-            chunk_start = offsets[buf_indices[0]][0]
-            chunk_end = offsets[buf_indices[-1]][1]
-            piece = text[chunk_start:chunk_end].strip()
-            if piece:
-                chunks.append(Chunk(
-                    id=len(chunks), text=piece, start=chunk_start, end=chunk_end,
-                    meta={"strategy": "semantic"},
-                ))
-            buf_indices.clear()
+            chunks.append(Chunk(
+                id=len(chunks), text=text[buf_start:end],
+                start=buf_start, end=end, meta={"strategy": "semantic"},
+            ))
+            buf_start = None
 
-        for i in range(len(sents)):
-            if buf_indices and i >= window:
-                v = embs[i]
-                ctx = embs[max(0, i - window):i].mean(axis=0)
-                sim = float(np.dot(v, ctx))
-                if sim < min_sim:
-                    flush()
-                    if max_chunks and len(chunks) >= max_chunks:
-                        return chunks
+        for index, (start, end) in enumerate(sentence_spans):
+            if buf_start is not None:
+                ctx = embs[max(0, index - window):index].mean(axis=0)
+                norm = float(np.linalg.norm(ctx))
+                sim = float(np.dot(embs[index], ctx) / norm) if norm else 0.0
+                if (sim < min_similarity
+                        or count_tokens(text[buf_start:end]) > size):
+                    flush(start)
+            if buf_start is None:
+                buf_start = start
 
-            buf_indices.append(i)
+        if buf_start is not None:
+            flush(len(text))
 
-            buf_text = text[offsets[buf_indices[0]][0]:offsets[i][1]]
-            if count_tokens(buf_text) >= size:
-                flush()
-                if max_chunks and len(chunks) >= max_chunks:
-                    return chunks
-
-                if overlap > 0:
-                    back_target = offsets[i][1] - overlap
-                    j = i
-                    while j >= 0 and offsets[j][0] > back_target:
-                        j -= 1
-                    if j + 1 <= i:
-                        buf_indices.append(i)
-                continue
-
-            if max_chunks and len(chunks) >= max_chunks:
-                break
-
-        if buf_indices and (not max_chunks or len(chunks) < max_chunks):
-            flush()
-
-        logger.info("Semantic chunking: {} chunks from {} sentences", len(chunks), len(sents))
+        if max_chunks is not None:
+            chunks = chunks[:max_chunks]
+        add_bounded_overlap(text, chunks, size, overlap)
+        logger.info("Semantic chunking: {} chunks", len(chunks))
         return chunks

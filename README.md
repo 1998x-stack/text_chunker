@@ -1,13 +1,12 @@
 <p align="center">
   <h1 align="center">Text-Chunker</h1>
   <p align="center">
-    <strong>A pluggable, production-ready text chunking framework for RAG applications</strong>
+    <strong>A pluggable text chunking and evaluation framework for RAG research</strong>
   </p>
   <p align="center">
     <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.9%2B-blue.svg?style=flat-square" alt="Python 3.9+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="MIT License"></a>
-    <a href="https://github.com/1998x-stack/text_chunker/actions"><img src="https://img.shields.io/badge/CI-passing-brightgreen?style=flat-square" alt="CI"></a>
-    <a href="https://github.com/1998x-stack/text_chunker"><img src="https://img.shields.io/badge/coverage-62%25-yellow?style=flat-square" alt="Coverage"></a>
+    <a href="https://github.com/1998x-stack/text_chunker/actions"><img src="https://github.com/1998x-stack/text_chunker/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://github.com/1998x-stack/text_chunker/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome"></a>
   </p>
 </p>
@@ -18,13 +17,15 @@
 >
 > Split any document — English, Chinese, mixed-language, code, math — into semantically meaningful chunks for RAG pipelines, search indexes, and LLM context windows.
 
+> **Project status:** v0.2.1 correctness refactor is under review. Chunk offsets refer to canonical extracted text; full PDF/HTML source mapping and retrieval-grade evaluation are not yet implemented. See [the v0.2.1 design notes](docs/architecture-v0.2.1.md).
+
 ## Why Text-Chunker?
 
 | Pain Point | How Text-Chunker Solves It |
 |---|---|
 | Fixed-size splits break mid-sentence | **Recursive chunker** respects paragraph/sentence boundaries |
 | Topic shifts ignored | **Semantic chunker** detects topic boundaries via embeddings |
-| Structured docs lose hierarchy | **Structure chunker** splits on headings, preserving context |
+| Structured docs lose hierarchy | **Structure chunker** groups Markdown headings; HTML/PDF AST source maps remain future work |
 | One strategy doesn't fit all docs | **Registry pattern** — swap strategies via config, not code |
 | Hard to measure chunk quality | **Built-in metrics**: redundancy, coverage, boundary rate, token distribution |
 | Experiment overhead | **Grid-search ablation** on HuggingFace datasets with CSV/JSON export |
@@ -46,7 +47,7 @@
 |:---------|:---------|:-----:|:----:|
 | **Fixed** | Uniform chunks, batch indexing | Instant | Free |
 | **Recursive** | General-purpose (recommended) | Instant | Free |
-| **Structure** | Markdown/HTML with headings | Instant | Free |
+| **Structure** | Markdown with headings (HTML structural parser pending) | Instant | Free |
 | **Semantic** | Topic-aware splitting | Fast | GPU/CPU |
 | **LLM** | Complex documents needing deep understanding | Slow | API calls |
 
@@ -151,11 +152,11 @@ Tested on a **9,299-character multilingual document** (Chinese + English, math f
 
 | Strategy | Chunks | Avg Chars | Avg Tokens | Redundancy | Coverage | Time |
 |:---------|:------:|:---------:|:----------:|:----------:|:--------:|:----:|
-| **Fixed** | 8 | 1,281 | 488 | 9.9% | 110.2% | 3ms |
-| **Recursive** | 8 | 1,206 | 464 | 4.4% | 103.8% | 14ms |
-| **Structure** | 5 | 833 | 325 | 0.0% | 44.8% | 6ms |
+| **Fixed (legacy benchmark)** | 8 | 1,281 | 488 | 9.9% | 110.2% | 3ms |
+| **Recursive (legacy benchmark)** | 8 | 1,206 | 464 | 4.4% | 103.8% | 14ms |
+| **Structure (legacy benchmark)** | 5 | 833 | 325 | 0.0% | 44.8% | 6ms |
 
-> **Note:** Structure strategy shows lower coverage on this document because it targets Markdown headings (`#`), and many sections use Chinese-style headings without `#` markers. This is expected — structure chunking excels on well-formatted Markdown/HTML.
+> **Historical only (v0.2.0):** these values used output length divided by input length, which is not a valid unique coverage measure. The new correctness contract rejects missing spans and computes unique coverage from source intervals. Rerun benchmarks before comparing strategies.
 
 ## Experiment Framework
 
