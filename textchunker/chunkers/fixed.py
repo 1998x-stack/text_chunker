@@ -1,79 +1,81 @@
+"""Lossless fixed-size character/token chunking."""
+
 from __future__ import annotations
 
 from typing import List
 
 from loguru import logger
 
-from ..exceptions import ChunkerError
-from ..types import Chunk
 from .. import utils as _utils_mod
-from ..utils import count_tokens
+from ..core.token_budget import largest_fitting_end
+from ..core.validation import validate_parameters
 from ..registry import register
+from ..types import Chunk
 from .base import BaseChunker
 
 
 @register("fixed")
 class FixedChunker(BaseChunker):
-    """Fixed-size sliding window chunker (character or token based)."""
+    """Windowed text splitting with code-point-safe token mode."""
 
     def chunk(self, text: str) -> List[Chunk]:
-        c = self.cfg.common
-        f = self.cfg.fixed
-        size = int(c.get("chunk_size", 512))
-        overlap = int(c.get("chunk_overlap", 80))
-        use_tokens = bool(f.get("use_tokens", True))
-        max_chunks = c.get("max_chunks")
+        common, options = self.cfg.common, self.cfg.fixed
+        size = int(common.get("chunk_size", 512))
+        overlap = int(common.get("chunk_overlap", 80))
+        max_chunks = common.get("max_chunks")
+        validate_parameters(size, overlap, max_chunks)
+        use_tokens = bool(options.get("use_tokens", True))
 
         if not text:
             return []
-
         enc = _utils_mod._enc
         if use_tokens and enc is not None:
             return self._chunk_by_tokens(text, size, overlap, max_chunks, enc)
-
-        if use_tokens and enc is None:
-            logger.warning("tiktoken unavailable, falling back to character-based chunking")
-
+        if use_tokens:
+            logger.warning(
+                "tiktoken unavailable; explicitly falling back to character windows"
+            )
         return self._chunk_by_chars(text, size, overlap, max_chunks)
 
-    def _chunk_by_chars(self, text: str, size: int, overlap: int, max_chunks: int | None) -> List[Chunk]:
+    def _chunk_by_chars(self, text: str, size: int, overlap: int,
+                        max_chunks: int | None) -> List[Chunk]:
         chunks: List[Chunk] = []
-        start = 0
-        n = len(text)
-        while start < n:
-            end = min(start + size, n)
-            piece = text[start:end]
+        cursor = 0
+        while cursor < len(text):
+            stop = min(cursor + size, len(text))
             chunks.append(Chunk(
-                id=len(chunks), text=piece, start=start, end=end,
+                id=len(chunks), text=text[cursor:stop],
+                start=cursor, end=stop,
                 meta={"strategy": "fixed", "mode": "char"},
             ))
-            if max_chunks and len(chunks) >= max_chunks:
+            if stop == len(text) or (
+                    max_chunks is not None and len(chunks) >= max_chunks):
                 break
-            if end == n:
-                break
-            start = end - overlap if overlap < (end - start) else start + 1
-        logger.info("Fixed chunking (char): {} chunks from {} chars", len(chunks), n)
+            cursor = stop - overlap
         return chunks
 
-    def _chunk_by_tokens(self, text: str, size: int, overlap: int, max_chunks: int | None, enc) -> List[Chunk]:
-        tokens = enc.encode(text)
+    def _chunk_by_tokens(self, text: str, size: int, overlap: int,
+                         max_chunks: int | None, enc) -> List[Chunk]:
+        """Use real source slices, never decode arbitrary partial UTF-8 tokens."""
+        count = lambda value: len(enc.encode(value))
         chunks: List[Chunk] = []
-        tok_start = 0
-        n = len(tokens)
-        while tok_start < n:
-            tok_end = min(tok_start + size, n)
-            chunk_tokens = tokens[tok_start:tok_end]
-            piece = enc.decode(chunk_tokens)
-            char_start = len(enc.decode(tokens[:tok_start]))
-            char_end = len(enc.decode(tokens[:tok_end]))
+        cursor = 0
+        while cursor < len(text):
+            stop = largest_fitting_end(text, cursor, size, count)
             chunks.append(Chunk(
-                id=len(chunks), text=piece, start=char_start, end=char_end,
+                id=len(chunks), text=text[cursor:stop],
+                start=cursor, end=stop,
                 meta={"strategy": "fixed", "mode": "token"},
             ))
-            if max_chunks and len(chunks) >= max_chunks:
+            if stop == len(text) or (
+                    max_chunks is not None and len(chunks) >= max_chunks):
                 break
-            if tok_end == n:
-                break
-            tok_start = tok_end - overlap if overlap < (tok_end - tok_start) else tok_start + 1
-        logger.info("Fixed chunking (token): {} chunks from {} tokens", len(chunks), n)
+
+            # Reuse a bounded token suffix without stalling forward progress.
+            next_start = stop
+            for candidate in range(stop - 1, cursor, -1):
+                if count(text[candidate:stop]) > overlap:
+                    break
+                next_start = candidate
+            cursor = next_start
         return chunks

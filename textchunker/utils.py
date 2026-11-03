@@ -1,53 +1,50 @@
-from __future__ import annotations
-import re
-from typing import Iterable, List, Tuple, Optional
+"""Token and sentence utilities.
 
-# 尝试使用 tiktoken 进行 token 计数，不可用则退化到字符级
+Sentence offsets are half-open Python character indexes into original input.
+No whitespace or separators are silently removed from source spans.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Iterable, List, Tuple
+
 try:
     import tiktoken
     _enc = tiktoken.get_encoding("cl100k_base")
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover - optional dependency
     _enc = None
 
 
 def count_tokens(text: str) -> int:
-    """统计文本的 token 数（优先 tiktoken；否则返回字符数）。"""
-    if _enc:
-        return len(_enc.encode(text))
-    return len(text)
-
-
-def whitespace_sentences(text: str) -> List[str]:
-    """轻量级句子切分（中文/英文兼容的标点启发式）。"""
-    pat = r'(?<=[。！？!?；;])\s+|(?<=\.)\s+'
-    parts = re.split(pat, text.strip())
-    return [p for p in parts if p]
+    """Legacy shared budget counter; explicit tokenizer injection is v0.3."""
+    return len(_enc.encode(text)) if _enc is not None else len(text)
 
 
 def whitespace_sentences_with_offsets(text: str) -> List[Tuple[str, int, int]]:
-    """Sentence splitting that returns (sentence, start, end) tuples.
+    """Split on sentence punctuation and keep separator whitespace in spans.
 
-    Uses the same regex as whitespace_sentences but tracks character offsets,
-    eliminating the need for text.find() which fails on duplicate sentences.
+    Chinese punctuation is recognized without requiring trailing spaces.
+    The returned nonempty spans concatenate to the complete input.
     """
-    pat = r'(?<=[。！？!?；;])\s+|(?<=\.)\s+'
-    stripped = text.strip()
-    if not stripped:
+    if not text:
         return []
-    parts = re.split(pat, stripped)
-    offset = text.index(stripped[0]) if stripped else 0
+    pattern = r"(?<=[。！？!?；;])\s*|(?<=\.)\s+"
     results: List[Tuple[str, int, int]] = []
-    cursor = offset
-    for part in parts:
-        if not part:
-            continue
-        start = text.find(part, cursor)
-        if start == -1:
-            start = cursor
-        end = start + len(part)
-        results.append((part, start, end))
-        cursor = end
+    cursor = 0
+    for match in re.finditer(pattern, text):
+        stop = match.end()
+        if stop > cursor:
+            results.append((text[cursor:stop], cursor, stop))
+            cursor = stop
+    if cursor < len(text):
+        results.append((text[cursor:], cursor, len(text)))
     return results
+
+
+def whitespace_sentences(text: str) -> List[str]:
+    return [piece.strip() for piece, _, _ in
+            whitespace_sentences_with_offsets(text) if piece.strip()]
 
 
 def clamp(n: int, a: int, b: int) -> int:
@@ -55,6 +52,5 @@ def clamp(n: int, a: int, b: int) -> int:
 
 
 def sliding_windows(seq: List[str], k: int) -> Iterable[Tuple[int, List[str]]]:
-    """滑动窗口，返回 (起始索引, 片段列表)。"""
-    for i in range(0, len(seq) - k + 1):
-        yield i, seq[i:i + k]
+    for index in range(0, len(seq) - k + 1):
+        yield index, seq[index:index + k]

@@ -1,3 +1,5 @@
+"""Structure-first Markdown chunker preserving source coverage."""
+
 from __future__ import annotations
 
 import re
@@ -5,96 +7,83 @@ from typing import List, Tuple
 
 from loguru import logger
 
-from ..types import Chunk
+from ..core.validation import validate_parameters
 from ..registry import register
-from .base import BaseChunker
+from ..types import Chunk
 from ..utils import count_tokens
-from .recursive import _split_by_separators
-
-
-def _build_offset_map(text: str, parts: List[str]) -> List[int]:
-    """Build start offsets using cumulative cursor (safe for duplicates)."""
-    offsets: List[int] = []
-    cursor = 0
-    for part in parts:
-        idx = text.find(part, cursor)
-        if idx == -1:
-            idx = cursor
-        offsets.append(idx)
-        cursor = idx + len(part)
-    return offsets
+from .base import BaseChunker
+from .recursive import _split_by_separators, add_bounded_overlap
 
 
 @register("structure")
 class StructureChunker(BaseChunker):
-    """Structure-based chunker: splits by document headings (Markdown/HTML)."""
+    """Markdown heading sections, including any text before first heading.
+
+    HTML input is currently treated as one section. A proper AST-based parser
+    is planned for v0.4; do not mistake this fallback for structural HTML.
+    """
 
     def _md_sections(self, text: str) -> List[Tuple[str, int, int]]:
+        if not text:
+            return []
         lines = text.splitlines(keepends=True)
-        heads: List[int] = []
-        for i, ln in enumerate(lines):
-            if re.match(r"^\s*#{1,6}\s+", ln):
-                heads.append(i)
-        heads.append(len(lines))
-        spans: List[Tuple[str, int, int]] = []
-        for i in range(len(heads) - 1):
-            beg_line = heads[i]
-            end_line = heads[i + 1]
-            beg = sum(len(l) for l in lines[:beg_line])
-            end = sum(len(l) for l in lines[:end_line])
-            title = re.sub(r"^#+\s+", "", lines[beg_line]).strip()
-            spans.append((title, beg, end))
-        if not spans:
-            spans = [("Document", 0, len(text))]
-        return spans
+        positions = [0]
+        for line in lines:
+            positions.append(positions[-1] + len(line))
+        heads = [
+            index for index, line in enumerate(lines)
+            if re.match(r"^[ \t]{0,3}#{1,6}[ \t]+", line)
+        ]
+        if not heads:
+            return [("Document", 0, len(text))]
+
+        sections: List[Tuple[str, int, int]] = []
+        if positions[heads[0]] > 0:
+            sections.append(("Preamble", 0, positions[heads[0]]))
+        for position, head in enumerate(heads):
+            stop_line = heads[position + 1] if position + 1 < len(heads) else len(lines)
+            title = re.sub(r"^[ \t]{0,3}#{1,6}[ \t]+", "", lines[head]).strip()
+            sections.append((title, positions[head], positions[stop_line]))
+        return sections
 
     def _html_sections(self, text: str) -> List[Tuple[str, int, int]]:
-        return [("HTML", 0, len(text))]
+        return [("HTML (unparsed)", 0, len(text))] if text else []
 
     def chunk(self, text: str) -> List[Chunk]:
-        c = self.cfg.common
-        st = self.cfg.structure
-        size = int(c.get("chunk_size", 800))
-        overlap = int(c.get("chunk_overlap", 100))
-        prefer = st.get("prefer", "auto")
-        sub_split = bool(st.get("sub_split", True))
-        max_chunks = c.get("max_chunks")
-
-        if prefer in {"md", "auto"}:
-            spans = self._md_sections(text)
-        elif prefer == "html":
-            spans = self._html_sections(text)
-        else:
-            spans = self._md_sections(text)
+        common, options = self.cfg.common, self.cfg.structure
+        size = int(common.get("chunk_size", 800))
+        overlap = int(common.get("chunk_overlap", 100))
+        max_chunks = common.get("max_chunks")
+        validate_parameters(size, overlap, max_chunks)
+        prefer = options.get("prefer", "auto")
+        sub_split = bool(options.get("sub_split", True))
+        sections = (self._html_sections(text) if prefer == "html"
+                    else self._md_sections(text))
 
         chunks: List[Chunk] = []
-        for title, beg, end in spans:
-            seg = text[beg:end]
-            if count_tokens(seg) <= size or not sub_split:
+        for title, begin, end in sections:
+            source = text[begin:end]
+            if count_tokens(source) <= size or not sub_split:
+                parts = [source]
+            else:
+                parts = _split_by_separators(
+                    source, ["\n\n", "\n", " ", ""], size
+                )
+
+            cursor = begin
+            for part in parts:
                 chunks.append(Chunk(
-                    id=len(chunks), text=seg, start=beg, end=end,
+                    id=len(chunks), text=part, start=cursor,
+                    end=cursor + len(part),
                     meta={"strategy": "structure", "title": title},
                 ))
-            else:
-                parts = _split_by_separators(seg, ["\n\n", "\n", " ", ""], size)
-                offsets = _build_offset_map(seg, parts)
-                for j, p in enumerate(parts):
-                    s = beg + offsets[j]
-                    e = s + len(p)
-                    chunks.append(Chunk(
-                        id=len(chunks), text=p, start=s, end=e,
-                        meta={"strategy": "structure", "title": title},
-                    ))
-            if max_chunks and len(chunks) >= max_chunks:
+                cursor += len(part)
+                if max_chunks is not None and len(chunks) >= max_chunks:
+                    break
+            if max_chunks is not None and len(chunks) >= max_chunks:
                 break
 
-        if overlap > 0 and len(chunks) > 1:
-            for i in range(1, len(chunks)):
-                prev, cur = chunks[i - 1], chunks[i]
-                head_start = max(cur.start - overlap, prev.start)
-                head = text[head_start:cur.start]
-                cur.text = head + cur.text
-                cur.start = head_start
-
-        logger.info("Structure chunking: {} chunks from {} sections", len(chunks), len(spans))
+        add_bounded_overlap(text, chunks, size, overlap, same_title_only=True)
+        logger.info("Structure chunking: {} chunks from {} sections",
+                    len(chunks), len(sections))
         return chunks

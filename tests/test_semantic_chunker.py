@@ -1,79 +1,66 @@
+"""Test semantic decision logic with deterministic, isolated embeddings."""
+
 import sys
 import types
 
 import numpy as np
 import pytest
 
-# 提前注入 sentence_transformers stub，避免真实依赖
-stub_module = types.ModuleType("sentence_transformers")
+from textchunker.core.validation import validate_chunks
+from textchunker.types import StrategyConfig
+from textchunker import utils
 
 
-class _DummySentenceTransformer:
+class DummySentenceTransformer:
     def __init__(self, *_args, **_kwargs):
         pass
 
     def encode(self, sentences, normalize_embeddings=True):
-        vecs = np.eye(len(sentences), dtype=float)
-        return vecs
+        return np.eye(len(sentences), dtype=float)
 
 
-stub_module.SentenceTransformer = _DummySentenceTransformer
-sys.modules["sentence_transformers"] = stub_module
+@pytest.fixture
+def chunker_factory(monkeypatch):
+    stub = types.ModuleType("sentence_transformers")
+    stub.SentenceTransformer = DummySentenceTransformer
+    monkeypatch.setitem(sys.modules, "sentence_transformers", stub)
+    monkeypatch.setattr(utils, "_enc", None)
+    from textchunker.chunkers.semantic import SemanticChunker
 
-from textchunker.chunkers.semantic import SemanticChunker
-from textchunker import utils as _utils
-from textchunker.types import StrategyConfig
-
-_utils._enc = None
-
-
-def _strategy_cfg(**semantic_overrides):
-    return StrategyConfig(
-        name="semantic",
-        common={"chunk_size": 15, "chunk_overlap": 0},
-        semantic={"min_similarity": 0.0, "sentence_window": 1, **semantic_overrides},
-        recursive={},
-        fixed={},
-        structure={},
-        llm={},
-    )
+    def create(size=15, limit=None):
+        cfg = StrategyConfig(
+            name="semantic",
+            common={"chunk_size": size, "chunk_overlap": 0,
+                    "max_chunks": limit},
+            semantic={"min_similarity": 0, "sentence_window": 1},
+        )
+        return SemanticChunker(cfg)
+    return create
 
 
-def test_semantic_chunker_preserves_sentence_offsets():
+def test_semantic_preserves_source_and_budget(chunker_factory):
     text = "First sentence.\n\nSecond sentence with more words.\n\nThird sentence."
-    chunker = SemanticChunker(_strategy_cfg())
-
-    chunks = chunker.chunk(text)
-
-    assert len(chunks) == 3
-    second_start = text.index("Second sentence")
-    third_start = text.index("Third sentence")
-
-    assert chunks[1].start == second_start
-    assert chunks[2].start == third_start
-    assert text[chunks[0].start:chunks[0].end].strip() == chunks[0].text
+    chunks = chunker_factory().chunk(text)
+    validate_chunks(text, chunks, count=len, max_size=15)
 
 
-def test_semantic_chunker_applies_max_chunks_limit():
-    text = "One. Two. Three. Four."
-    cfg = _strategy_cfg()
-    cfg.common["chunk_size"] = 5
-    cfg.common["max_chunks"] = 2
-
-    chunker = SemanticChunker(cfg)
-    chunks = chunker.chunk(text)
-
+def test_semantic_limits_chunk_count(chunker_factory):
+    chunks = chunker_factory(size=5, limit=2).chunk(
+        "One. Two. Three. Four."
+    )
     assert len(chunks) == 2
 
 
-def test_semantic_chunker_handles_duplicate_sentences():
-    """Duplicate sentences should have correct, non-overlapping offsets."""
+def test_semantic_handles_duplicate_sentences(chunker_factory):
     text = "Hello world. Hello world. Goodbye world."
-    chunker = SemanticChunker(_strategy_cfg())
-    chunks = chunker.chunk(text)
-    for c in chunks:
-        assert c.start >= 0
-        assert c.end <= len(text)
-        assert c.start < c.end
-    starts = [c.start for c in chunks]
-    assert len(starts) == len(set(starts))
+    chunks = chunker_factory().chunk(text)
+    validate_chunks(text, chunks, count=len, max_size=15)
+    assert [chunk.start for chunk in chunks] == sorted(
+        chunk.start for chunk in chunks
+    )
+
+
+def test_semantic_chinese_without_spaces(chunker_factory):
+    text = "第一句话。第二句话！第三句话？"
+    chunks = chunker_factory(size=12).chunk(text)
+    validate_chunks(text, chunks, count=len, max_size=12)
