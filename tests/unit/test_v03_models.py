@@ -47,12 +47,12 @@ def test_markdown_line_blocks_are_lossless_and_fences_hide_headings():
     assert [block.title for block in doc.blocks if block.kind == "heading"] == [
         "Parent", "Child"
     ]
-    assert doc.metadata["ast"] is False
+    assert doc.metadata["ast"] is True
 
 
 def test_html_extracts_text_without_inventing_raw_html_offsets():
     doc = parse_html("<h1>Title</h1><p>Some <b>text</b></p>", "x.html")
-    assert doc.text == "Title\nSome text"
+    assert doc.text == "Title\n\nSome text"
     assert doc.source_map.resolve(Span(0, 5))[0].source_span is None
     assert doc.source_map.resolve(Span(0, 5))[0].mapping == "extracted"
 

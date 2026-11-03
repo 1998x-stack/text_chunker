@@ -1,9 +1,10 @@
-"""Adapters to DocumentIR. Markdown AST and full PDF layout arrive in v0.4."""
+"""Adapters to DocumentIR. MarkdownIt blocks and HTML DOM are supported; PDF layout geometry is deferred."""
 
 from .text import parse_text, parse_extracted_text
 from .markdown import parse_markdown
 from .html import parse_html
 from .pdf import parse_pdf_pages
+from .docling_adapter import parse_docling, parse_docling_file
 
 
 def parse_document(text: str, source_uri: str, format: str = "text"):
@@ -19,4 +20,5 @@ def parse_document(text: str, source_uri: str, format: str = "text"):
 __all__ = [
     "parse_document", "parse_text", "parse_extracted_text",
     "parse_markdown", "parse_html", "parse_pdf_pages",
+    "parse_docling", "parse_docling_file",
 ]

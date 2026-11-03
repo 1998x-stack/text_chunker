@@ -35,14 +35,25 @@ strategy:
     model_name: sentence-transformers/all-MiniLM-L6-v2
     min_similarity: 0.62
     sentence_window: 1
+    embedding_batch_size: 64
+    max_embedding_calls: 256
+    embedding_cache_size: 0
+    on_embedding_error: error
   structure:
     prefer: md
     sub_split: true
+  hybrid:
+    oversized_element: split
   llm:
     provider: dashscope
     llm_model: qwen-max
     hf_model: Qwen/Qwen2.5-7B-Instruct
     max_chars_per_call: 8000
+    max_provider_calls: 16
+    max_total_prompt_chars: 65536
+    retry_attempts: 1
+    timeout_seconds: 30
+    on_failure: fallback
     system_prompt: |
       你是一名文本结构工程师。请将输入文本按主题/标题/时间线合理分块，
       产出 JSON 列表：[{ "title": str|null, "start": int, "end": int }]

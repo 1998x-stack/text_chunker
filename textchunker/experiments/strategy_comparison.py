@@ -61,10 +61,18 @@ def run_strategy_comparison(args: argparse.Namespace | None = None) -> List[Dict
         total_chunks = 0
         total_chars = 0
         total_tokens = 0
+        total_unique_chars = 0
         t0 = time.perf_counter()
 
         for text in texts:
             chunks = chunker.chunk(text)
+            # Count union of canonical source intervals, not overlap duplicates.
+            covered_until = 0
+            for item in sorted(chunks, key=lambda c: (c.start, c.end)):
+                begin = max(0, min(len(text), item.start))
+                end = max(begin, min(len(text), item.end))
+                total_unique_chars += max(0, end - max(begin, covered_until))
+                covered_until = max(covered_until, end)
             total_chunks += len(chunks)
             for c in chunks:
                 total_chars += len(c.text)
@@ -82,7 +90,8 @@ def run_strategy_comparison(args: argparse.Namespace | None = None) -> List[Dict
             "avg_chunk_chars": total_chars / total_chunks if total_chunks else 0,
             "avg_chunk_tokens": total_tokens / total_chunks if total_chunks else 0,
             "redundancy_ratio": max(0, (total_tokens - doc_tokens) / doc_tokens) if doc_tokens else 0,
-            "coverage_ratio": total_chars / doc_chars if doc_chars else 0,
+            "coverage_ratio": total_unique_chars / doc_chars if doc_chars else 0,
+            "output_char_ratio": total_chars / doc_chars if doc_chars else 0,
             "time_seconds": elapsed,
         })
 
@@ -95,7 +104,8 @@ def run_strategy_comparison(args: argparse.Namespace | None = None) -> List[Dict
     table.add_column("Avg Chars", justify="right")
     table.add_column("Avg Tokens", justify="right")
     table.add_column("Redundancy", justify="right")
-    table.add_column("Coverage", justify="right")
+    table.add_column("Unique Coverage", justify="right")
+    table.add_column("Output/Input", justify="right")
     table.add_column("Time (s)", justify="right")
 
     for r in results:
@@ -103,7 +113,9 @@ def run_strategy_comparison(args: argparse.Namespace | None = None) -> List[Dict
             r["strategy"], str(r["total_chunks"]),
             f"{r['chunks_per_doc']:.1f}", f"{r['avg_chunk_chars']:.0f}",
             f"{r['avg_chunk_tokens']:.0f}", f"{r['redundancy_ratio']*100:.1f}%",
-            f"{r['coverage_ratio']:.2f}x", f"{r['time_seconds']:.2f}",
+            f"{r['coverage_ratio']*100:.1f}%",
+            f"{r['output_char_ratio']:.2f}x",
+            f"{r['time_seconds']:.2f}",
         )
     console.print(table)
 

@@ -21,6 +21,7 @@ class SourceLocation:
     page_number: Optional[int] = None
     block_id: Optional[str] = None
     mapping: str = "extracted"
+    bbox: Optional[Mapping[str, Any]] = None
 
     def __post_init__(self) -> None:
         if self.mapping not in {"exact", "extracted"}:
@@ -37,6 +38,7 @@ class SourceMapEntry:
     source_span: Optional[Span] = None
     page_number: Optional[int] = None
     block_id: Optional[str] = None
+    bbox: Optional[Mapping[str, Any]] = None
 
     def __post_init__(self) -> None:
         if self.source_span is not None and (
@@ -104,6 +106,7 @@ class SourceMap:
                 source_span=origin, page_number=entry.page_number,
                 block_id=entry.block_id,
                 mapping="exact" if origin is not None else "extracted",
+                bbox=entry.bbox,
             ))
             cursor = end
         if cursor != span.end:
