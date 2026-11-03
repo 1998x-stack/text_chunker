@@ -37,6 +37,8 @@ class HFProvider(BaseLLMProvider):
         try:
             result = self.pipe(prompt, max_new_tokens=512, do_sample=False)
             content = result[0]["generated_text"]
+            if content.startswith(prompt):
+                content = content[len(prompt):]
         except Exception as exc:
             logger.warning("HF model failure: {}", type(exc).__name__)
             return []

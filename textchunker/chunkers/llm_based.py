@@ -21,8 +21,9 @@ def _proposals_are_complete(proposals, length: int) -> bool:
     for item in proposals:
         if not isinstance(item, (list, tuple)) or len(item) != 3:
             return False
-        start, end, _ = item
+        start, end, title = item
         if (type(start) is not int or type(end) is not int
+                or (title is not None and not isinstance(title, str))
                 or start != cursor or end <= start or end > length):
             return False
         cursor = end
@@ -80,13 +81,15 @@ class LLMChunker(BaseChunker):
             window = text[base:base + max_chars]
             proposals = []
             error_reason = "budget_exhausted"
-            if calls < max_calls and charged_chars + len(window) <= max_prompt_chars:
+            # Repeated system instructions also consume model input space.
+            call_chars = len(window) + len(system_prompt)
+            if calls < max_calls and charged_chars + call_chars <= max_prompt_chars:
                 for _ in range(attempts):
                     if calls >= max_calls or (
-                            charged_chars + len(window) > max_prompt_chars):
+                            charged_chars + call_chars > max_prompt_chars):
                         break
                     calls += 1
-                    charged_chars += len(window)
+                    charged_chars += call_chars
                     try:
                         proposals = self.provider.propose_spans(
                             window, system_prompt=system_prompt,

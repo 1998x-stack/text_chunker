@@ -48,7 +48,7 @@ def test_llm_provider_call_budget_keeps_source_complete():
         "llm", common={"chunk_size": 8, "chunk_overlap": 0},
         llm={
             "max_chars_per_call": 8, "max_provider_calls": 1,
-            "max_total_prompt_chars": 8, "retry_attempts": 1,
+            "max_total_prompt_chars": 256, "retry_attempts": 1,
         },
     )
     doc = parse_text("0123456789abcdefghijklmnopqrstuvwxyz", "x")
@@ -162,3 +162,45 @@ def test_semantic_embedding_call_cap_is_enforced():
             _semantic_cfg(embedding_batch_size=1, max_embedding_calls=1),
             CharacterTokenizer(), embedding_provider=FakeEmbeddings(),
         )
+
+
+def test_llm_prompt_budget_includes_system_prompt():
+    class Provider:
+        calls = 0
+
+        def propose_spans(self, text, system_prompt, max_chars):
+            self.calls += 1
+            return [(0, len(text), None)]
+
+    fake = Provider()
+    cfg = StrategyConfig(
+        "llm", common={"chunk_size": 10, "chunk_overlap": 0},
+        llm={"max_chars_per_call": 10,
+             "max_total_prompt_chars": 9,
+             "system_prompt": "system rules",
+             "max_provider_calls": 10},
+    )
+    result = run_chunking(
+        parse_text("abcdef", "x"), cfg,
+        CharacterTokenizer(), llm_provider=fake,
+    )
+    assert result.report.ok and result.complete
+    assert fake.calls == 0
+    assert result.chunks[0].metadata["fallback_reason"] == "budget_exhausted"
+
+
+def test_llm_invalid_title_fails_candidate_contract():
+    class Provider:
+        def propose_spans(self, text, system_prompt, max_chars):
+            return [(0, len(text), object())]
+
+    cfg = StrategyConfig(
+        "llm", common={"chunk_size": 40, "chunk_overlap": 0},
+        llm={"max_provider_calls": 1},
+    )
+    result = run_chunking(
+        parse_text("important text", "x"), cfg,
+        CharacterTokenizer(), llm_provider=Provider(),
+    )
+    assert result.report.ok and result.complete
+    assert result.chunks[0].metadata["fallback"] is True

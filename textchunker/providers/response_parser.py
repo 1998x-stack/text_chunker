@@ -19,9 +19,13 @@ def parse_span_response(
             or max_spans <= 0):
         return []
     decoder = json.JSONDecoder()
+    candidates = 0
     for pos, char in enumerate(content):
         if char != "[":
             continue
+        candidates += 1
+        if candidates > 32:
+            return []
         try:
             data, _ = decoder.raw_decode(content[pos:])
         except (ValueError, TypeError):
