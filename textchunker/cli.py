@@ -1,4 +1,4 @@
-"""Compatible command-line entrypoint with per-document verification."""
+"""CLI with DocumentIR provenance and independent correctness gates."""
 
 from __future__ import annotations
 
@@ -8,24 +8,38 @@ import time
 from loguru import logger
 
 from .config import build_argparser, load_yaml, merge_cli, to_project_config
-from .core.validation import validate_chunks
-from .export import save_jsonl, save_txt_dir
-from .factory import create_chunker
+from .export import save_result_jsonl, save_txt_dir
 from .log_config import setup_logging
+from .parsers import parse_extracted_text, parse_markdown, parse_pdf_pages, parse_text
+from .pipeline import run_chunking
 from .readers import load_inputs
 from .settings import Settings
 from .stats import StatsCollector
+from .tokenizers import create_tokenizer
+from .types import Chunk
 from .utils import count_tokens
-from . import utils as _utils
 from .visualization import show_chunks
-from .chunkers import *  # noqa: F401,F403 - trigger strategy registration
+
+
+def _parse_input(doc):
+    ext = os.path.splitext(doc.path)[1].lower()
+    if ext == ".md":
+        return parse_markdown(doc.text, doc.path)
+    if doc.meta.get("format") == "html":
+        return parse_extracted_text(doc.text, doc.path, "html")
+    if doc.meta.get("format") == "pdf":
+        # TODO(v0.4): remove duplicated PDF extraction in load_inputs.
+        from pypdf import PdfReader
+        reader = PdfReader(doc.path)
+        pages = [page.extract_text() or "" for page in reader.pages]
+        return parse_pdf_pages(pages, doc.path)
+    return parse_text(doc.text, doc.path)
 
 
 def main() -> None:
     args = build_argparser().parse_args()
     raw_cfg = load_yaml(args.config)
     cfg = merge_cli(to_project_config(raw_cfg), args)
-
     settings = Settings.from_env_and_yaml(raw_cfg)
     if args.log_level:
         settings.log_level = args.log_level
@@ -34,60 +48,54 @@ def main() -> None:
     stats = StatsCollector.instance()
     stats.reset()
     stats_enabled = args.stats or settings.stats_enabled
-    input_path = cfg.io.get("input_path")
     output_path = cfg.io.get("output_path")
-    visualize = bool(cfg.project.get("visualize", False))
     output_format = cfg.project.get("export_format", "jsonl")
-    size = int(cfg.strategy.common.get("chunk_size", 512))
-    max_chunks = cfg.strategy.common.get("max_chunks")
+    visualize = bool(cfg.project.get("visualize", False))
+    tokenizer_name = args.tokenizer or cfg.strategy.common.get("tokenizer", "legacy")
+    tokenizer = create_tokenizer(tokenizer_name)
 
-    chunker = create_chunker(cfg.strategy)
     if output_path and output_format in {"jsonl", "both"}:
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-        # Truncate once per run, never once per document.
         with open(output_path, "w", encoding="utf-8"):
             pass
 
-    for doc in load_inputs(input_path):
-        logger.info("Processing: {}", doc.path)
+    for file_doc in load_inputs(cfg.io.get("input_path")):
+        document = _parse_input(file_doc)
+        logger.info("Processing: {}", document.source_uri)
         started = time.perf_counter()
-        chunks = chunker.chunk(doc.text)
+        result = run_chunking(document, cfg.strategy, tokenizer=tokenizer,
+                              strict=True)
         elapsed = time.perf_counter() - started
-
-        # Preserve the current character-based fixed strategy's unit.
-        fixed_char_mode = (
-            cfg.strategy.name == "fixed"
-            and (
-                not cfg.strategy.fixed.get("use_tokens", True)
-                or _utils._enc is None
+        chunks = [
+            Chunk(
+                id=item.index, text=item.text, start=item.span.start,
+                end=item.span.end, meta=dict(item.metadata),
             )
-        )
-        measure = len if fixed_char_mode else count_tokens
-        validate_chunks(
-            doc.text, chunks, count=measure, max_size=size,
-            require_full_coverage=max_chunks is None,
-        )
-
+            for item in result.chunks
+        ]
         if stats_enabled:
             stats.record_document(
-                char_count=len(doc.text), token_count=count_tokens(doc.text),
+                char_count=len(document.text),
+                token_count=count_tokens(document.text),
                 chunk_count=len(chunks), processing_time=elapsed,
             )
             stats.record_chunks(
                 chunk_sizes=[len(chunk.text) for chunk in chunks],
                 chunk_tokens=[count_tokens(chunk.text) for chunk in chunks],
-                max_size=size,
+                max_size=int(cfg.strategy.common.get("chunk_size", 512)),
             )
-            stats.record_coverage(len(doc.text), chunks)
+            stats.record_coverage(len(document.text), chunks)
 
         if visualize:
-            show_chunks(chunks, title=os.path.basename(doc.path))
+            show_chunks(chunks, title=os.path.basename(document.source_uri))
         if output_path:
             if output_format in {"jsonl", "both"}:
-                save_jsonl(output_path, chunks, source=doc.path, mode="a")
+                save_result_jsonl(output_path, result, source=document.source_uri,
+                                  mode="a")
             if output_format in {"txt_dir", "both"}:
                 directory = os.path.splitext(output_path)[0] + "_parts"
-                save_txt_dir(directory, chunks, prefix=os.path.basename(doc.path))
+                save_txt_dir(directory, chunks,
+                             prefix=os.path.basename(document.source_uri))
 
     if stats_enabled:
         from rich.console import Console
@@ -96,10 +104,11 @@ def main() -> None:
         for key, value in stats.summary().items():
             console.print(f"  {key}: {value:.3f}" if isinstance(value, float)
                           else f"  {key}: {value}")
-        target = args.stats_dir or settings.stats_dir
+        destination = args.stats_dir or settings.stats_dir
         stats.save_run(
-            os.path.join(target, f"{cfg.strategy.name}_run.json"),
-            metadata={"strategy": cfg.strategy.name},
+            os.path.join(destination, f"{cfg.strategy.name}_run.json"),
+            metadata={"strategy": cfg.strategy.name,
+                      "tokenizer": tokenizer.name},
         )
 
 

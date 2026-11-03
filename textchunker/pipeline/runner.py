@@ -7,6 +7,7 @@ from ..core.models import DocumentIR, chunk_digest
 from ..core.spans import Span
 from ..evaluation import evaluate_correctness
 from ..exceptions import ChunkerError
+from .. import chunkers as _builtin_chunkers  # noqa: F401 - register builtins
 from ..factory import create_chunker
 from ..tokenizers import CharacterTokenizer, LegacyTokenizer, Tokenizer
 from ..types import StrategyConfig

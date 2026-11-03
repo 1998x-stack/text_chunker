@@ -60,6 +60,8 @@ def build_argparser() -> argparse.ArgumentParser:
     # Chunk params
     p.add_argument("--chunk-size", type=int, default=None, help="Override chunk_size")
     p.add_argument("--chunk-overlap", type=int, default=None, help="Override chunk_overlap")
+    p.add_argument("--tokenizer", type=str, default=None,
+                   help="char / legacy / tiktoken:<encoding> / hf:<model>")
     return p
 
 
