@@ -1,91 +1,41 @@
-<p align="center">
-  <h1 align="center">Text-Chunker</h1>
-  <p align="center">
-    <strong>A pluggable text chunking and evaluation framework for RAG research</strong>
-  </p>
-  <p align="center">
-    <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg?style=flat-square" alt="Python 3.9+"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="MIT License"></a>
-    <a href="https://github.com/1998x-stack/text_chunker/actions"><img src="https://github.com/1998x-stack/text_chunker/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-    <a href="https://github.com/1998x-stack/text_chunker/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome"></a>
-  </p>
-</p>
+# Text-Chunker
 
----
+Source-traceable text chunking for RAG experiments and indexing. Supports five strategies and a strict **DocumentIR → ChunkingResult → independent evaluation** pipeline.
 
-> **5 strategies. 1 decorator to add your own. Zero lock-in.**
->
-> Split any document — English, Chinese, mixed-language, code, math — into semantically meaningful chunks for RAG pipelines, search indexes, and LLM context windows.
+[中文文档](docs/README.zh-CN.md) · [Architecture](docs/architecture-v0.3.md) · [Documentation index](docs/INDEX.md) · [Changelog](CHANGELOG.md)
 
-> **Project status:** V0.3 adds DocumentIR, explicit tokenizers, source maps and independent correctness reports. Structured HTML/PDF layout mapping and retrieval benchmarking remain future work. See [V0.3 architecture](docs/architecture-v0.3.md).
+**Status:** V0.3 implemented. Markdown support is a lossless line-block parser, **not** a full AST. HTML and PDF preserve extracted-text provenance, but cannot yet map spans to original DOM nodes, PDF glyph coordinates or bounding boxes. Structure-aware Hybrid Chunking is planned for V0.4. No retrieval-quality improvement claims are made.
 
-## Why Text-Chunker?
+## Install
 
-| Pain Point | How Text-Chunker Solves It |
-|---|---|
-| Fixed-size splits break mid-sentence | **Recursive chunker** respects paragraph/sentence boundaries |
-| Topic shifts ignored | **Semantic chunker** detects topic boundaries via embeddings |
-| Structured docs lose hierarchy | **Structure chunker** groups Markdown headings; HTML/PDF AST source maps remain future work |
-| One strategy doesn't fit all docs | **Registry pattern** — swap strategies via config, not code |
-| Hard to measure chunk quality | **Built-in metrics**: redundancy, coverage, boundary rate, token distribution |
-| Experiment overhead | **Grid-search ablation** on HuggingFace datasets with CSV/JSON export |
-
-## Strategies at a Glance
-
-```
-            Speed                          Quality
-  Fast ◄─────────────────────────────────────► Best
-
-  ┌──────────┐  ┌───────────┐  ┌──────────┐  ┌───────────┐  ┌─────────┐
-  │  Fixed   │  │ Recursive │  │Structure │  │ Semantic  │  │   LLM   │
-  │ O(n)     │  │ O(n)      │  │ O(n)     │  │ O(n·emb)  │  │ O(n·api)│
-  │ char/tok │  │ separators│  │ headings │  │ embeddings│  │ qwen-max│
-  └──────────┘  └───────────┘  └──────────┘  └───────────┘  └─────────┘
-```
-
-| Strategy | Best For | Speed | Cost |
-|:---------|:---------|:-----:|:----:|
-| **Fixed** | Uniform chunks, batch indexing | Instant | Free |
-| **Recursive** | General-purpose (recommended) | Instant | Free |
-| **Structure** | Markdown with headings (HTML structural parser pending) | Instant | Free |
-| **Semantic** | Topic-aware splitting | Fast | GPU/CPU |
-| **LLM** | Complex documents needing deep understanding | Slow | API calls |
-
-## Quick Start
+Requirements: **Python 3.10+**. The minimal install does not load the heavy embedding/LLM stacks.
 
 ```bash
-# Install
-pip install -e ".[all,dev]"
-
-# Chunk a document
-python -m textchunker.cli --input doc.txt --strategy recursive --visualize
-
-# With statistics
-python -m textchunker.cli --input doc.txt --strategy semantic --stats --chunk-size 600
+python -m pip install -e .
+# Character mode needs no tokenizer extras.
+python -m pip install -e ".[token,structure,dev]"
+# Optional, much heavier:
+python -m pip install -e ".[semantic]"  # sentence-transformers
+python -m pip install -e ".[llm]"       # providers and transformer stack
 ```
 
-**Output:**
+## CLI
 
-```
-╭───────────────────────── Chunks=8, TotalChars=9649 ──────────────────────────╮
-│ ┏━━━━┳━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
-│ ┃ ID ┃ Chars ┃ Span        ┃ Meta               ┃ Preview                  ┃ │
-│ ┡━━━━╇━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━┩ │
-│ │  0 │ 632   │ [0,632)     │ strategy:recursive │ 第一章：深度学习的数学基… │ │
-│ │  1 │ 1990  │ [582,2572)  │ strategy:recursive │ Chapter 2: The Archite…  │ │
-│ │  2 │ 711   │ [2522,3233) │ strategy:recursive │ 第三章：检索增强生成…     │ │
-│ │ .. │ ...   │ ...         │ ...                │ ...                      │ │
-│ └────┴───────┴─────────────┴────────────────────┴──────────────────────────┘ │
-╰──────────────────────────────────────────────────────────────────────────────╯
+```bash
+python -m textchunker.cli --config configs/default.yaml \
+    --input sample.txt --output out/chunks.jsonl \
+    --strategy recursive --tokenizer char --chunk-size 128 --chunk-overlap 16
 
-Pipeline Statistics
-  total_chunks: 8     avg_chunk_tokens: 463     redundancy_ratio: 0.044
-  coverage_ratio: 1.038     boundary_rate: 1.000
+# Multiple documents, one JSONL file (output cleared once per run).
+python -m textchunker.cli --input docs/ --output out/docs.jsonl \
+    --strategy recursive --tokenizer tiktoken:cl100k_base
 ```
 
-## V0.3 DocumentIR API
+The CLI also accepts `--strategy fixed|recursive|structure|semantic|llm`, `--max-chunks`, `--stats`, `--visualize` and `--config`; run `python -m textchunker.cli --help` for the full list. The default YAML enables preview output; override it with your own configuration for automated runs.
 
-A strict, provenance-aware API is now available through `parse_document` and `run_chunking`. It returns stable chunk IDs, explicit Tokenizer identities, source locations, and independent quality reports. See [Architecture V0.3](docs/architecture-v0.3.md).
+**Token units:** `--tokenizer char` counts Unicode code points. `tiktoken:cl100k_base` and `hf:<model>` require their corresponding dependencies. `legacy` defaults to cl100k_base when installed, else character count. Fixed mode with `use_tokens: false` always uses character units.
+
+## Python API
 
 ```python
 from textchunker.parsers import parse_markdown
@@ -93,239 +43,67 @@ from textchunker.pipeline import run_chunking
 from textchunker.tokenizers import CharacterTokenizer
 from textchunker.types import StrategyConfig
 
-ir = parse_markdown("# Chapter\nText content.", "manual.md")
-config = StrategyConfig(name="recursive", common={"chunk_size": 32, "chunk_overlap": 4})
-result = run_chunking(ir, config, CharacterTokenizer())
-assert result.complete and result.report.ok
+document = parse_markdown("# Guide\nA paragraph.\n", "docs/guide.md")
+config = StrategyConfig(
+    name="recursive",
+    common={"chunk_size": 128, "chunk_overlap": 16},
+)
+result = run_chunking(document, config, CharacterTokenizer())
+assert result.report.ok and result.complete
+for chunk in result.chunks:
+    print(chunk.chunk_id, chunk.span, chunk.heading_path)
+    print(chunk.source_locations)
 ```
 
-## Python API
+An existing direct interface `create_chunker(config).chunk(text)` is preserved. New callers should use `run_chunking` for explicit tokenizer identity, stable chunk IDs, source maps, completeness and independent validation.
 
-```python
-from textchunker.config import load_yaml, to_project_config
-from textchunker.factory import create_chunker
+**Integrity:** a successful full-document result has ordered spans, no uncovered source characters, matching text and valid token budgets. An explicitly limited run (`max_chunks`) may return `result.complete == False` with an INCOMPLETE warning; partial results must not be treated as a complete document index.
 
-cfg = to_project_config(load_yaml("configs/default.yaml"))
-chunker = create_chunker(cfg.strategy)
-chunks = chunker.chunk("Your text here...")
+## Data flow
 
-for c in chunks:
-    print(f"[{c.start}:{c.end}] {c.text[:80]}...")
+```text
+readers / parsers
+    → DocumentIR(text, blocks, SourceMap)
+    → chunker registry (fixed/recursive/structure/semantic/llm)
+    → ChunkRecord + source locations
+    → independent correctness evaluator
+    → JSONL / TXT / reports
 ```
 
-### Add Your Own Strategy in 3 Lines
+`DocumentIR.text` is the canonical Python Unicode string and `Span(start,end)` is half-open in **Unicode code points, not UTF-8 bytes**. Plain TXT/Markdown use exact source-character mapping; HTML/PDF extraction sets raw source spans to null. PDF retains 1-based page anchors, not page geometry.
 
-```python
-from textchunker.registry import register
-from textchunker.chunkers.base import BaseChunker
+## Code layout
 
-@register("my_strategy")
-class MyChunker(BaseChunker):
-    def chunk(self, text: str) -> list:
-        ...  # your logic
-```
-
-Then add `from . import my_strategy` to `textchunker/chunkers/__init__.py`.
-
-## Architecture
-
-```
-                    ┌──────────────────────────────┐
-                    │          CLI / API            │
-                    │   (YAML + CLI arg merging)    │
-                    └──────────┬───────────────────┘
-                               │
-                    ┌──────────▼───────────────────┐
-                    │     Settings + Logging        │
-                    │  (Loguru, JSON sinks, rotate)  │
-                    └──────────┬───────────────────┘
-                               │
-              ┌────────────────▼────────────────────┐
-              │         Reader (txt/md/html/pdf)     │
-              └────────────────┬────────────────────┘
-                               │
-              ┌────────────────▼────────────────────┐
-              │    Factory + Registry  (@register)   │
-              ├─────┬──────┬──────┬──────┬──────────┤
-              │Fixed│Recur.│Seman.│Struc.│   LLM    │
-              └─────┴──────┴──┬───┴──────┴────┬─────┘
-                              │               │
-                    ┌─────────▼──┐   ┌────────▼────────┐
-                    │ Embeddings │   │  LLM Providers   │
-                    │ (DashScope │   │  (DashScope/HF)  │
-                    │  / ST)     │   │  qwen-max        │
-                    └────────────┘   └─────────────────┘
-                               │
-              ┌────────────────▼────────────────────┐
-              │  Stats + Visualization + Export      │
-              │  (metrics, Rich tables, JSONL/TXT)   │
-              └─────────────────────────────────────┘
-```
-
-## Benchmark: Multilingual Stress Test
-
-Tested on a **9,299-character multilingual document** (Chinese + English, math formulas, code blocks, Markdown tables, Unicode symbols):
-
-| Strategy | Chunks | Avg Chars | Avg Tokens | Redundancy | Coverage | Time |
-|:---------|:------:|:---------:|:----------:|:----------:|:--------:|:----:|
-| **Fixed (legacy benchmark)** | 8 | 1,281 | 488 | 9.9% | 110.2% | 3ms |
-| **Recursive (legacy benchmark)** | 8 | 1,206 | 464 | 4.4% | 103.8% | 14ms |
-| **Structure (legacy benchmark)** | 5 | 833 | 325 | 0.0% | 44.8% | 6ms |
-
-> **Historical only (v0.2.0):** these values used output length divided by input length, which is not a valid unique coverage measure. The new correctness contract rejects missing spans and computes unique coverage from source intervals. Rerun benchmarks before comparing strategies.
-
-## Experiment Framework
-
-Run grid-search ablation studies on HuggingFace datasets:
-
-```bash
-# Semantic ablation — sweep similarity thresholds × chunk sizes
-python -m textchunker.experiments.semantic_ablation \
-    --dataset wikitext --subset wikitext-2-raw-v1 --split validation \
-    --chunk-sizes 400 600 800 --min-sims 0.58 0.62 0.66 \
-    --save-json results/semantic_ablation.json
-
-# Recursive ablation — sweep chunk sizes × overlaps
-python -m textchunker.experiments.recursive_ablation \
-    --chunk-sizes 256 512 800 --chunk-overlaps 0 50 100
-
-# Cross-strategy comparison
-python -m textchunker.experiments.strategy_comparison \
-    --strategies fixed recursive semantic --max-docs 32
-```
-
-## Configuration
-
-<details>
-<summary><strong>YAML Config</strong> (click to expand)</summary>
-
-```yaml
-settings:
-  api_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-  llm_model: "qwen-max"
-  embedding_model: "text-embedding-v3"
-
-logging:
-  level: INFO
-  json: false
-  log_dir: logs/
-  rotation: "10 MB"
-
-strategy:
-  name: recursive
-  common:
-    chunk_size: 512
-    chunk_overlap: 80
-  recursive:
-    separators: ["\n\n", "\n", " ", ""]
-  semantic:
-    min_similarity: 0.62
-    sentence_window: 3
-```
-
-</details>
-
-<details>
-<summary><strong>CLI Reference</strong> (click to expand)</summary>
-
-```bash
-python -m textchunker.cli \
-    --config configs/default.yaml \   # YAML config file
-    --input docs/ \                   # Input file or directory
-    --output out/chunks.jsonl \       # Output path
-    --strategy semantic \             # Override strategy
-    --chunk-size 600 \                # Override chunk size
-    --chunk-overlap 100 \             # Override overlap
-    --visualize \                     # Show Rich preview table
-    --stats \                         # Enable pipeline statistics
-    --stats-dir stats/ \              # Stats output directory
-    --log-level DEBUG \               # Log verbosity
-    --llm-model qwen-max \            # LLM model name
-    --embedding-model text-embedding-v3  # Embedding model
-    --max-chunks 50                   # Limit output chunks
-```
-
-</details>
-
-## Chunk Size Guide
-
-| Use Case | Recommended Size | Why |
-|:---------|:----------------:|:----|
-| Question Answering | 200–400 tokens | Higher precision, less noise |
-| Summarization | 800–1,200 tokens | Preserves broader context |
-| General RAG | 400–600 tokens | Best balance (sweet spot) |
-| Code Documentation | 300–500 tokens | Keeps functions intact |
-
-## Development
-
-```bash
-make install      # Install with all extras
-make test         # pytest with coverage (target: >60%)
-make lint         # flake8 + mypy + isort check
-make format       # Auto-format with isort + black
-make benchmark    # Benchmark all strategies
-make experiment   # Run ablation experiments
-make ci           # Full CI pipeline (lint + test)
-```
-
-### Docker
-
-```bash
-make docker-build
-docker-compose up
-docker run -e DASHSCOPE_API_KEY=$DASHSCOPE_API_KEY textchunker:latest \
-    --config configs/default.yaml --input /app/input/doc.txt
-```
-
-## Project Structure
-
-```
+```text
 textchunker/
-├── cli.py                  # CLI entry point
-├── config.py               # YAML/CLI configuration
-├── settings.py             # Settings dataclass
-├── log_config.py           # Loguru setup (console + JSON sinks)
-├── stats.py                # StatsCollector + decorators
-├── exceptions.py           # ChunkerError, ConfigError, ProviderError
-├── factory.py              # Strategy factory
-├── registry.py             # @register decorator + registry
-├── types.py                # Chunk, FileDoc, StrategyConfig
-├── utils.py                # Token counting, sentence splitting
-├── readers.py              # Multi-format file reader
-├── export.py               # JSONL/TXT export
-├── visualization.py        # Rich terminal tables
-├── chunkers/               # Strategy implementations
-│   ├── fixed.py            #   char/token sliding window
-│   ├── recursive.py        #   separator-priority recursive split
-│   ├── semantic.py         #   embedding similarity breakpoints
-│   ├── structure.py        #   heading-based sections
-│   └── llm_based.py        #   LLM-proposed span boundaries
-├── providers/              # LLM & embedding backends
-│   ├── dashscope_provider.py  # DashScope (qwen-max)
-│   ├── embeddings.py          # DashScope + SentenceTransformer
-│   └── llm.py                 # Base + HuggingFace provider
-└── experiments/            # Ablation & comparison tools
-    ├── semantic_ablation.py
-    ├── recursive_ablation.py
-    └── strategy_comparison.py
+  core/          # DocumentIR, spans, contracts, validation and budgets
+  parsers/       # text, Markdown line blocks, HTML extraction, PDF pages
+  tokenizers/    # char, legacy, tiktoken, HF adapters
+  chunkers/      # five algorithms
+  pipeline/      # DocumentIR-first runner
+  evaluation/    # independent integrity evaluation
+  providers/     # optional embedding and LLM providers
+  experiments/   # historical ablations (legacy metrics, see below)
+  cli.py, export.py, readers.py, config.py, types.py
+tests/
+  unit/, property/, integration/ and legacy tests
+docs/           # authoritative architecture and usage documentation
 ```
 
-## Environment Variables
+## Verification
 
-| Variable | Purpose | Required |
-|:---------|:--------|:--------:|
-| `DASHSCOPE_API_KEY` | DashScope API authentication | For `semantic` / `llm` strategies |
+```bash
+python -m pip install -e ".[token,structure,dev]" numpy
+bash scripts/ci.sh
+# Or inspect the GitHub Actions workflow under .github/workflows/ci.yml
+```
 
-## Contributing
+CI checks syntax, fatal lint errors and pytest with a 60% minimum coverage gate. It does **not** yet establish strict typing compliance, full style conformance, performance benchmarking or live provider correctness.
 
-Contributions are welcome! Please:
+Old benchmark percentages over 100% called “coverage” actually measured output/input character length (including overlap). Real unique-span coverage is bounded by 100%; historical figures should not be used as new performance evidence.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feat/amazing-feature`)
-3. Add tests for new functionality
-4. Run `make ci` to verify
-5. Submit a Pull Request
+## Documentation
 
-## License
+See [documentation index](docs/INDEX.md), [CLI and configuration](docs/usage.md), [architecture](docs/architecture-v0.3.md), [development and CI](docs/development.md), and [legacy strategy research](docs/strategy-guide.md).
 
-MIT
+License: [MIT](LICENSE).

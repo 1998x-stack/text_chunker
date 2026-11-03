@@ -1,8 +1,8 @@
 # V0.3 — DocumentIR, Tokenizer and independently verified chunk results
 
-This is a *stacked* change based on v0.2.1 PR #3. It adds new
-DocumentIR-first APIs while leaving the old strategy names and direct
-chunker.chunk(str) interface available.
+V0.3 introduces DocumentIR-first APIs while preserving legacy strategy names
+and direct chunker.chunk(str) usage. This document describes shipped APIs,
+not planned V0.4 structure-aware functionality.
 
 ## Data contract
 
@@ -70,10 +70,8 @@ Independent evaluation checks:
 - tokenizer-specific max size;
 - explicit incomplete output when max_chunks truncates a document.
 
-strict=True (default) aborts the pipeline if an error is detected. Partial
-output requested via max_chunks reports incomplete=True? **No**:
-result.complete=False with an INCOMPLETE warning. Never treat partial output
-as a complete index.
+strict=True (default) aborts the pipeline if an error is detected. Partial output requested via max_chunks returns result.complete=False with an
+INCOMPLETE warning. Never treat partial output as a complete index.
 
 ## Known limitations
 

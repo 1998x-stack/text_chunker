@@ -9,7 +9,7 @@ install: ## Install package with all extras and dev dependencies
 test: ## Run tests with coverage
 	bash scripts/test.sh
 
-lint: ## Run flake8 + mypy + isort check
+lint: ## Run compileall + fatal Flake8 checks
 	bash scripts/lint.sh
 
 format: ## Format code with isort + black
@@ -21,7 +21,7 @@ benchmark: ## Benchmark all strategies on sample data
 experiment: ## Run ablation experiments
 	bash scripts/experiment.sh
 
-ci: ## Run full CI pipeline (lint + test + benchmark)
+ci: ## Run required correctness CI (lint + tests)
 	bash scripts/ci.sh
 
 docker-build: ## Build Docker image
