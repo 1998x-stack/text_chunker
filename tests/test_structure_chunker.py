@@ -1,20 +1,4 @@
-import sys
-import types
 import pytest
-
-if "bs4" not in sys.modules:
-    stub = types.ModuleType("bs4")
-    stub.BeautifulSoup = None
-    sys.modules["bs4"] = stub
-
-if "sentence_transformers" not in sys.modules:
-    st_stub = types.ModuleType("sentence_transformers")
-    st_stub.SentenceTransformer = None
-    sys.modules["sentence_transformers"] = st_stub
-
-if "numpy" not in sys.modules:
-    import numpy
-    sys.modules["numpy"] = numpy
 
 from textchunker.types import StrategyConfig
 from textchunker.chunkers.structure import StructureChunker
