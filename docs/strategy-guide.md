@@ -1,3 +1,5 @@
+> **Historical research guide:** third-party references and conceptual suggestions below are not guarantees that this repository implements each feature. Refer to [Architecture V0.3](architecture-v0.3.md) and [README](../README.md) for current behavior.
+
 # RAG 的 5 大文本分块策略（从图到落地）
 
 下面把图中的五种方法逐一“解剖”：工作原理、适用场景、常见参数、优缺点与实现要点，并在每节后补充前沿做法与参考资料。最后给出一份可执行的实验与评估计划，帮助你在自己的语料上把“分块→召回→答案质量”跑通并调优。

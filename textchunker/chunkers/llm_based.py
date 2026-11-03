@@ -91,8 +91,8 @@ class LLMChunker(BaseChunker):
             for start, end, title in proposals:
                 candidate = window[start:end]
                 pieces = (_split_by_separators(
-                    candidate, ["\n\n", "\n", " ", ""], size
-                ) if count_tokens(candidate) > size else [candidate])
+                    candidate, ["\n\n", "\n", " ", ""], size, self.count_tokens
+                ) if self.count_tokens(candidate) > size else [candidate])
                 cursor = base + start
                 for piece in pieces:
                     chunks.append(Chunk(
@@ -111,6 +111,7 @@ class LLMChunker(BaseChunker):
             if max_chunks is not None and len(chunks) >= max_chunks:
                 break
 
-        add_bounded_overlap(text, chunks, size, overlap)
+        add_bounded_overlap(text, chunks, size, overlap,
+                            count=self.count_tokens)
         logger.info("LLM chunking: {} verified chunks", len(chunks))
         return chunks

@@ -47,8 +47,8 @@ class SemanticChunker(BaseChunker):
         for sentence, start, _ in whitespace_sentences_with_offsets(text):
             # A single enormous sentence must also obey budget.
             pieces = (_split_by_separators(
-                sentence, ["\n\n", "\n", " ", ""], size)
-                if count_tokens(sentence) > size else [sentence])
+                sentence, ["\n\n", "\n", " ", ""], size, self.count_tokens)
+                if self.count_tokens(sentence) > size else [sentence])
             cursor = start
             for piece in pieces:
                 sentence_spans.append((cursor, cursor + len(piece)))
@@ -76,7 +76,7 @@ class SemanticChunker(BaseChunker):
                 norm = float(np.linalg.norm(ctx))
                 sim = float(np.dot(embs[index], ctx) / norm) if norm else 0.0
                 if (sim < min_similarity
-                        or count_tokens(text[buf_start:end]) > size):
+                        or self.count_tokens(text[buf_start:end]) > size):
                     flush(start)
             if buf_start is None:
                 buf_start = start
@@ -86,6 +86,7 @@ class SemanticChunker(BaseChunker):
 
         if max_chunks is not None:
             chunks = chunks[:max_chunks]
-        add_bounded_overlap(text, chunks, size, overlap)
+        add_bounded_overlap(text, chunks, size, overlap,
+                            count=self.count_tokens)
         logger.info("Semantic chunking: {} chunks", len(chunks))
         return chunks

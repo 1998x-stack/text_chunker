@@ -5,7 +5,9 @@ from .types import StrategyConfig
 from .chunkers.base import BaseChunker
 
 
-def create_chunker(cfg: StrategyConfig) -> BaseChunker:
+def create_chunker(cfg: StrategyConfig, tokenizer=None) -> BaseChunker:
     """工厂：根据策略名创建分块器实例。"""
     cls = get(cfg.name)
-    return cls(cfg)
+    chunker = cls(cfg)
+    chunker.tokenizer = tokenizer
+    return chunker
