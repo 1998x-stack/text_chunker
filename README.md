@@ -4,7 +4,7 @@
     <strong>A pluggable text chunking and evaluation framework for RAG research</strong>
   </p>
   <p align="center">
-    <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.9%2B-blue.svg?style=flat-square" alt="Python 3.9+"></a>
+    <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg?style=flat-square" alt="Python 3.9+"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="MIT License"></a>
     <a href="https://github.com/1998x-stack/text_chunker/actions"><img src="https://github.com/1998x-stack/text_chunker/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://github.com/1998x-stack/text_chunker/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome"></a>
@@ -17,7 +17,7 @@
 >
 > Split any document — English, Chinese, mixed-language, code, math — into semantically meaningful chunks for RAG pipelines, search indexes, and LLM context windows.
 
-> **Project status:** v0.2.1 correctness refactor is under review. Chunk offsets refer to canonical extracted text; full PDF/HTML source mapping and retrieval-grade evaluation are not yet implemented. See [the v0.2.1 design notes](docs/architecture-v0.2.1.md).
+> **Project status:** V0.3 adds DocumentIR, explicit tokenizers, source maps and independent correctness reports. Structured HTML/PDF layout mapping and retrieval benchmarking remain future work. See [V0.3 architecture](docs/architecture-v0.3.md).
 
 ## Why Text-Chunker?
 
@@ -81,6 +81,22 @@ python -m textchunker.cli --input doc.txt --strategy semantic --stats --chunk-si
 Pipeline Statistics
   total_chunks: 8     avg_chunk_tokens: 463     redundancy_ratio: 0.044
   coverage_ratio: 1.038     boundary_rate: 1.000
+```
+
+## V0.3 DocumentIR API
+
+A strict, provenance-aware API is now available through `parse_document` and `run_chunking`. It returns stable chunk IDs, explicit Tokenizer identities, source locations, and independent quality reports. See [Architecture V0.3](docs/architecture-v0.3.md).
+
+```python
+from textchunker.parsers import parse_markdown
+from textchunker.pipeline import run_chunking
+from textchunker.tokenizers import CharacterTokenizer
+from textchunker.types import StrategyConfig
+
+ir = parse_markdown("# Chapter\nText content.", "manual.md")
+config = StrategyConfig(name="recursive", common={"chunk_size": 32, "chunk_overlap": 4})
+result = run_chunking(ir, config, CharacterTokenizer())
+assert result.complete and result.report.ok
 ```
 
 ## Python API

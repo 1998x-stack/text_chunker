@@ -64,15 +64,15 @@ class StructureChunker(BaseChunker):
         chunks: List[Chunk] = []
         for title, begin, end in sections:
             source = text[begin:end]
-            if count_tokens(source) > size and not sub_split:
+            if self.count_tokens(source) > size and not sub_split:
                 raise ChunkerError(
                     "Section exceeds budget while sub_split is disabled"
                 )
-            if count_tokens(source) <= size:
+            if self.count_tokens(source) <= size:
                 parts = [source]
             else:
                 parts = _split_by_separators(
-                    source, ["\n\n", "\n", " ", ""], size
+                    source, ["\n\n", "\n", " ", ""], size, self.count_tokens
                 )
 
             cursor = begin
@@ -88,7 +88,8 @@ class StructureChunker(BaseChunker):
             if max_chunks is not None and len(chunks) >= max_chunks:
                 break
 
-        add_bounded_overlap(text, chunks, size, overlap, same_title_only=True)
+        add_bounded_overlap(text, chunks, size, overlap,
+                            same_title_only=True, count=self.count_tokens)
         logger.info("Structure chunking: {} chunks from {} sections",
                     len(chunks), len(sections))
         return chunks
