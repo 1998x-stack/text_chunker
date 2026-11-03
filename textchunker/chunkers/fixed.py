@@ -29,6 +29,8 @@ class FixedChunker(BaseChunker):
         if not text:
             return []
         enc = _utils_mod._enc
+        if use_tokens and self.tokenizer is not None:
+            return self._chunk_by_tokens(text, size, overlap, max_chunks, None)
         if use_tokens and enc is not None:
             return self._chunk_by_tokens(text, size, overlap, max_chunks, enc)
         if use_tokens:
@@ -57,7 +59,8 @@ class FixedChunker(BaseChunker):
     def _chunk_by_tokens(self, text: str, size: int, overlap: int,
                          max_chunks: int | None, enc) -> List[Chunk]:
         """Use real source slices, never decode arbitrary partial UTF-8 tokens."""
-        count = lambda value: len(enc.encode(value))
+        count = (self.count_tokens if enc is None
+                 else lambda value: len(enc.encode(value)))
         chunks: List[Chunk] = []
         cursor = 0
         while cursor < len(text):

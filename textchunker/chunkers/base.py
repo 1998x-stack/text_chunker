@@ -9,6 +9,13 @@ class BaseChunker(ABC):
 
     def __init__(self, cfg: StrategyConfig) -> None:
         self.cfg = cfg
+        self.tokenizer = None  # Optional explicit v0.3 Tokenizer
+
+    def count_tokens(self, text: str) -> int:
+        if self.tokenizer is not None:
+            return self.tokenizer.count(text)
+        from ..utils import count_tokens
+        return count_tokens(text)
 
     @abstractmethod
     def chunk(self, text: str) -> List[Chunk]:
