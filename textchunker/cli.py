@@ -16,6 +16,7 @@ from .readers import load_inputs
 from .settings import Settings
 from .stats import StatsCollector
 from .utils import count_tokens
+from . import utils as _utils
 from .visualization import show_chunks
 from .chunkers import *  # noqa: F401,F403 - trigger strategy registration
 
@@ -58,7 +59,7 @@ def main() -> None:
             cfg.strategy.name == "fixed"
             and (
                 not cfg.strategy.fixed.get("use_tokens", True)
-                or __import__("textchunker.utils", fromlist=["_enc"])._enc is None
+                or _utils._enc is None
             )
         )
         measure = len if fixed_char_mode else count_tokens

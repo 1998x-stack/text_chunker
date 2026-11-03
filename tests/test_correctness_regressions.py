@@ -138,3 +138,16 @@ def test_sentence_offsets_cover_unspaced_chinese():
     spans = whitespace_sentences_with_offsets(source)
     assert len(spans) == 3
     assert "".join(part for part, _, _ in spans) == source
+
+
+def test_structure_rejects_oversized_unsplittable_section(monkeypatch):
+    import textchunker.utils as utils
+    from textchunker.chunkers.structure import StructureChunker
+    from textchunker.exceptions import ChunkerError
+
+    monkeypatch.setattr(utils, "_enc", None)
+    chunker = StructureChunker(config(
+        "structure", size=10, overlap=0, sub_split=False, prefer="md"
+    ))
+    with pytest.raises(ChunkerError, match="sub_split"):
+        chunker.chunk("# Heading\n" + "content " * 20)

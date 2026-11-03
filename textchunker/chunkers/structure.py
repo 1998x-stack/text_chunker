@@ -8,6 +8,7 @@ from typing import List, Tuple
 from loguru import logger
 
 from ..core.validation import validate_parameters
+from ..exceptions import ChunkerError
 from ..registry import register
 from ..types import Chunk
 from ..utils import count_tokens
@@ -63,7 +64,11 @@ class StructureChunker(BaseChunker):
         chunks: List[Chunk] = []
         for title, begin, end in sections:
             source = text[begin:end]
-            if count_tokens(source) <= size or not sub_split:
+            if count_tokens(source) > size and not sub_split:
+                raise ChunkerError(
+                    "Section exceeds budget while sub_split is disabled"
+                )
+            if count_tokens(source) <= size:
                 parts = [source]
             else:
                 parts = _split_by_separators(

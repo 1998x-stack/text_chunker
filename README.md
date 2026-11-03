@@ -25,7 +25,7 @@
 |---|---|
 | Fixed-size splits break mid-sentence | **Recursive chunker** respects paragraph/sentence boundaries |
 | Topic shifts ignored | **Semantic chunker** detects topic boundaries via embeddings |
-| Structured docs lose hierarchy | **Structure chunker** splits on headings, preserving context |
+| Structured docs lose hierarchy | **Structure chunker** groups Markdown headings; HTML/PDF AST source maps remain future work |
 | One strategy doesn't fit all docs | **Registry pattern** — swap strategies via config, not code |
 | Hard to measure chunk quality | **Built-in metrics**: redundancy, coverage, boundary rate, token distribution |
 | Experiment overhead | **Grid-search ablation** on HuggingFace datasets with CSV/JSON export |
@@ -47,7 +47,7 @@
 |:---------|:---------|:-----:|:----:|
 | **Fixed** | Uniform chunks, batch indexing | Instant | Free |
 | **Recursive** | General-purpose (recommended) | Instant | Free |
-| **Structure** | Markdown/HTML with headings | Instant | Free |
+| **Structure** | Markdown with headings (HTML structural parser pending) | Instant | Free |
 | **Semantic** | Topic-aware splitting | Fast | GPU/CPU |
 | **LLM** | Complex documents needing deep understanding | Slow | API calls |
 
