@@ -37,7 +37,8 @@ def _read_pdf(path: str) -> str:
     return "\n\n".join(_read_pdf_pages(path))
 
 
-def _load_one(path: str, preserve_structure: bool = False) -> FileDoc:
+def _load_one(path: str, preserve_structure: bool = False,
+              pdf_engine: str = "pypdf") -> FileDoc:
     ext = os.path.splitext(path)[1].lower()
     if ext in {".txt", ".md"}:
         return FileDoc(path=path, text=_read_text(path))
@@ -48,6 +49,9 @@ def _load_one(path: str, preserve_structure: bool = False) -> FileDoc:
             meta={"format": "html", "raw_html": preserve_structure},
         )
     if ext == ".pdf":
+        if preserve_structure and pdf_engine == "docling":
+            return FileDoc(path=path, text="",
+                           meta={"format": "docling", "source_path": path})
         if preserve_structure:
             pages = _read_pdf_pages(path)
             return FileDoc(
@@ -61,10 +65,13 @@ def _load_one(path: str, preserve_structure: bool = False) -> FileDoc:
     return FileDoc(path=path, text=_read_text(path))
 
 
-def load_inputs(path: str, *, preserve_structure: bool = False) -> Iterable[FileDoc]:
+def load_inputs(path: str, *, preserve_structure: bool = False,
+                pdf_engine: str = "pypdf") -> Iterable[FileDoc]:
     """Yield deterministic document order; preserve old extracted API by default."""
     if not path:
         raise ValueError("Input path is required")
+    if pdf_engine not in {"pypdf", "docling"}:
+        raise ValueError("pdf_engine must be pypdf or docling")
 
     if os.path.isdir(path):
         for root, directories, files in os.walk(path):
@@ -74,6 +81,6 @@ def load_inputs(path: str, *, preserve_structure: bool = False) -> Iterable[File
                 if os.path.splitext(filename)[1].lower() in {
                     ".txt", ".md", ".htm", ".html", ".pdf"
                 }:
-                    yield _load_one(filepath, preserve_structure)
+                    yield _load_one(filepath, preserve_structure, pdf_engine)
         return
-    yield _load_one(path, preserve_structure)
+    yield _load_one(path, preserve_structure, pdf_engine)

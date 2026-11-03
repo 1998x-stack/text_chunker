@@ -70,6 +70,7 @@ def save_result_jsonl(path: str, result, source: str,
                         "page_number": location.page_number,
                         "block_id": location.block_id,
                         "mapping": location.mapping,
+                        "bbox": dict(location.bbox) if location.bbox else None,
                     }
                     for location in chunk.source_locations
                 ],

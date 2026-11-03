@@ -2,9 +2,9 @@
 
 Source-traceable text chunking for RAG experiments and indexing. Supports six strategies and a strict **DocumentIR → ChunkingResult → independent evaluation** pipeline.
 
-[中文文档](docs/README.zh-CN.md) · [Architecture V0.4](docs/architecture-v0.4.md) · [Documentation index](docs/INDEX.md) · [Changelog](CHANGELOG.md)
+[中文文档](docs/README.zh-CN.md) · [Architecture](docs/architecture-v0.5-v0.6.md) · [Documentation index](docs/INDEX.md) · [Changelog](CHANGELOG.md)
 
-**Status:** V0.4 adds MarkdownIt token-backed structural blocks, HTML DOM blocks and the sixth **Hybrid** strategy. Original Unicode source offsets remain exact for Markdown/TXT; HTML raw character positions are unknown (only DOM block identifiers are exposed). PDF page anchors are supported but glyph coordinates, Docling end-to-end integration and retrieval-quality evaluation remain future work. No retrieval-quality improvement is claimed.
+**Status:** V0.4 structural splitting plus V0.5 model-reliability controls and V0.6 offline golden-answer retrieval evaluation are included in the consolidated PR. Docling native document objects can provide page and bounding-box provenance through an optional adapter. Live Docling conversion, production RAG quality improvements, PDF OCR accuracy, and real hosted-model reliability have **not** been validated in CI.
 
 ## Install
 
@@ -18,6 +18,24 @@ python -m pip install -e ".[token,structure,dev]"
 python -m pip install -e ".[semantic]"  # sentence-transformers
 python -m pip install -e ".[llm]"       # providers and transformer stack
 ```
+
+## Model reliability & reproducible evaluation (V0.5–V0.6)
+
+- `SemanticChunker`: injectable embedding backend, finite model-call and batch budgets, vector validation/normalization, optional per-instance cache and explicit recursive fallback on failure.
+- `LLMChunker`: strict JSON offset parser, bounded attempts/provider calls/prompt characters, timeout for compatible API calls, explicit `fallback`/`error` behavior; source coverage remains complete even after budget exhaustion.
+- `parse_docling_file(path)`: opt-in Docling DocumentConverter adapter with page numbers and available actual bounding boxes; raw PDF character offsets are never fabricated. Docling is not required for the offline CI suite.
+- `evaluation.benchmark`: human-reviewable answer spans, independent integrity checks, deterministic lexical-ranking baseline, Recall@k, MRR, binary nDCG, oracle evidence coverage, inspectable JSON report.
+- Lazy optional LangChain and LlamaIndex export adapters and non-destructive contextual text builder.
+
+```bash
+python -m textchunker.evaluation.benchmark \
+  --dataset benchmarks/datasets/golden_v1.json \
+  --strategies fixed recursive hybrid --tokenizer char \
+  --chunk-size 128 --chunk-overlap 16 --k 3 \
+  --output out/retrieval_benchmark.json
+```
+
+This small synthetic/handwritten corpus verifies evaluation machinery, **not a measured production improvement**. See [evidence and metric definitions](docs/evaluation.md) and [architecture notes](docs/architecture-v0.5-v0.6.md).
 
 ## V0.4 Structure-aware Hybrid
 
@@ -89,12 +107,13 @@ readers / parsers
 ```text
 textchunker/
   core/          # DocumentIR, spans, contracts, validation and budgets
-  parsers/       # text, MarkdownIt blocks, HTML DOM blocks, PDF pages
+  parsers/       # text, MarkdownIt, HTML DOM, PDF pages, native Docling
   tokenizers/    # char, legacy, tiktoken, HF adapters
   chunkers/      # six algorithms
   pipeline/      # DocumentIR-first runner
-  evaluation/    # independent integrity and structural evaluation
+  evaluation/    # correctness, structure, retrieval, benchmark, reporting
   providers/     # optional embedding and LLM providers
+  adapters/      # optional LangChain and LlamaIndex exports
   experiments/   # historical ablations (legacy metrics, see below)
   cli.py, export.py, readers.py, config.py, types.py
 tests/

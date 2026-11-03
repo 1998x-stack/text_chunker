@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "description": "Small handcrafted offline regression corpus; not evidence of production retrieval quality.",
+  "documents": [
+    {
+      "source_uri": "handbook.md",
+      "format": "markdown",
+      "text": "# RAG Storage\n\nMetadata is stored in SQLite. Dense embeddings use a local vector index.\n\n## Verification\n\nEvery chunk retains a stable document identifier and a canonical source span.\n\n## Unicode\n\nChinese examples use Unicode character offsets rather than byte positions.\n"
+    },
+    {
+      "source_uri": "notes.txt",
+      "format": "text",
+      "text": "API responses contain JSON provenance records.\nRetry budgets limit remote model calls.\nFailed model proposals fall back to deterministic splitting.\n"
+    }
+  ],
+  "queries": [
+    {
+      "id": "q-sqlite",
+      "query": "where is metadata stored",
+      "evidence": [
+        {
+          "source_uri": "handbook.md",
+          "quote": "Metadata is stored in SQLite"
+        }
+      ]
+    },
+    {
+      "id": "q-ids",
+      "query": "how are chunks identified",
+      "evidence": [
+        {
+          "source_uri": "handbook.md",
+          "quote": "stable document identifier"
+        }
+      ]
+    },
+    {
+      "id": "q-offsets",
+      "query": "how are Chinese character offsets represented",
+      "evidence": [
+        {
+          "source_uri": "handbook.md",
+          "quote": "Unicode character offsets"
+        }
+      ]
+    },
+    {
+      "id": "q-retries",
+      "query": "what limits remote model calls",
+      "evidence": [
+        {
+          "source_uri": "notes.txt",
+          "quote": "Retry budgets limit remote model calls"
+        }
+      ]
+    },
+    {
+      "id": "q-fallback",
+      "query": "what happens when model proposals fail",
+      "evidence": [
+        {
+          "source_uri": "notes.txt",
+          "quote": "fall back to deterministic splitting"
+        }
+      ]
+    }
+  ]
+}

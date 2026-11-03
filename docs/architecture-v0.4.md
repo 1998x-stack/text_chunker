@@ -1,6 +1,6 @@
 # V0.4 — Structure-aware Hybrid Chunking
 
-Status: implemented in the V0.4 feature branch; merge to main after independent CI acceptance.
+Status: V0.4 structural baseline in the consolidated V0.4–V0.6 PR. Native Docling adapter and independent retrieval evaluation are documented separately.
 
 ## Architecture
 
@@ -69,4 +69,4 @@ Under `max_chunks`, missing trailing input results in `result.complete=False`, a
 
 Run Python 3.11 CI with extra dependencies; independent tests assert source coverage, heading isolation, table/code atomicity, overflow warning/fail-closed, HTML DOM block identifiers, PDF page anchors and multi-document CLI output. Tests involving live LLM/embeddings or an installed Docling parser are **not** part of this release.
 
-Known limits: nested code fences inside quote/list wrappers are represented by the parent block; MarkdownIt gives stronger top-level block recognition, not a fully normalized inline AST. For deeply nested HTML tables/lists, the outer semantic block owns the children and provenance remains at that level. Further granular AST and Docling layout connectors need independent validation.
+Known limits: nested code fences inside quote/list wrappers are represented by the parent block; MarkdownIt gives stronger top-level block recognition, not a fully normalized inline AST. For deeply nested HTML tables/lists, the outer semantic block owns the children and provenance remains at that level. Further granular AST and live Docling conversion/complex layout tests need independent validation. An optional native DoclingDocument adapter now preserves provided provenance; see V0.5–V0.6 notes.

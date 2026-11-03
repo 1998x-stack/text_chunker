@@ -1,57 +1,43 @@
+"""Protocol-compatible local and optional LLM inference backends."""
 from __future__ import annotations
 
-import json
-import os
-import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from loguru import logger
 
-from ..exceptions import ProviderError
+from .response_parser import parse_span_response
 
 
 class BaseLLMProvider:
-    """Base class for LLM providers."""
-
     def propose_spans(
-        self, text: str, system_prompt: str, max_chars: int
+        self, text: str, system_prompt: str, max_chars: int,
     ) -> List[Tuple[int, int, Optional[str]]]:
         raise NotImplementedError
 
 
 class HFProvider(BaseLLMProvider):
-    """HuggingFace transformers text generation provider."""
+    """Optional local Hugging Face model; generation disabled until selected."""
 
     def __init__(self, model: str) -> None:
-        from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline  # type: ignore
+        from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
         logger.info("Loading HF model: {}", model)
         self.tokenizer = AutoTokenizer.from_pretrained(model)
         self._model = AutoModelForCausalLM.from_pretrained(model)
-        self.pipe = pipeline("text-generation", model=self._model, tokenizer=self.tokenizer)
+        self.pipe = pipeline(
+            "text-generation", model=self._model, tokenizer=self.tokenizer
+        )
 
     def propose_spans(
-        self, text: str, system_prompt: str, max_chars: int
+        self, text: str, system_prompt: str, max_chars: int,
     ) -> List[Tuple[int, int, Optional[str]]]:
-        prompt = system_prompt.strip() + "\n\n" + text[:max_chars]
+        if len(text) > max_chars:
+            raise ValueError("Window exceeds provider max_chars")
+        prompt = system_prompt.strip() + "\n\n" + text
         try:
-            out = self.pipe(prompt, max_new_tokens=512, do_sample=False)[0]["generated_text"]
-        except Exception as e:
-            logger.warning("HF inference failed: {}", e)
+            result = self.pipe(prompt, max_new_tokens=512, do_sample=False)
+            content = result[0]["generated_text"]
+        except Exception as exc:
+            logger.warning("HF model failure: {}", type(exc).__name__)
             return []
-
-        match = re.search(r'\[\s*\{.*?\}\s*(?:,\s*\{.*?\}\s*)*\]', out, re.DOTALL)
-        if not match:
-            logger.warning("No JSON array found in HF response")
-            return []
-
-        try:
-            data = json.loads(match.group())
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse JSON from HF response")
-            return []
-
-        spans: List[Tuple[int, int, Optional[str]]] = []
-        for item in data:
-            spans.append((int(item.get("start", 0)), int(item.get("end", 0)), item.get("title")))
-        return spans
+        return parse_span_response(content)

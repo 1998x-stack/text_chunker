@@ -1,4 +1,4 @@
-name: Python correctness
+name: Python correctness and retrieval smoke test
 
 on:
   pull_request:
@@ -11,18 +11,25 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
-      - name: Install lightweight test dependencies
+      - name: Install test dependencies (no model downloads)
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[token,structure,dev]" "numpy>=1.26" "openai>=1.46"
-      - name: Syntax and fatal lint checks
+          python -m pip install -e ".[structure,token,dev]" "numpy>=1.26" "openai>=1.46"
+          python -m pip check
+      - name: Syntax and fatal lint gate
         run: bash scripts/lint.sh
-      - name: Unit and regression suite
+      - name: Independent regression suite
         run: bash scripts/test.sh
+      - name: Offline anchored retrieval benchmark
+        run: bash scripts/eval.sh

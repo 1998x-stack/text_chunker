@@ -33,6 +33,8 @@ def run_chunking(
     config: StrategyConfig,
     tokenizer: Tokenizer | None = None,
     strict: bool = True,
+    embedding_provider=None,
+    llm_provider=None,
 ) -> ChunkingResult:
     """Run a registered strategy with provenance and independent QA.
 
@@ -45,7 +47,13 @@ def run_chunking(
     if config.name == "fixed" and not config.fixed.get("use_tokens", True):
         tokenizer = CharacterTokenizer()
 
-    chunker = create_chunker(config, tokenizer=tokenizer)
+    if embedding_provider is None and llm_provider is None:
+        chunker = create_chunker(config, tokenizer=tokenizer)
+    else:
+        chunker = create_chunker(
+            config, tokenizer=tokenizer, embedding_provider=embedding_provider,
+            llm_provider=llm_provider,
+        )
     chunks = (chunker.chunk_document(document)
               if hasattr(chunker, "chunk_document")
               else chunker.chunk(document.text))

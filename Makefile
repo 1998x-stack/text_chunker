@@ -1,4 +1,4 @@
-.PHONY: install test lint format benchmark experiment ci docker-build docker-run clean help
+.PHONY: install test lint format benchmark benchmark-offline experiment ci docker-build docker-run clean help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -17,6 +17,9 @@ format: ## Format code with isort + black
 
 benchmark: ## Benchmark all strategies on sample data
 	bash scripts/benchmark.sh
+
+benchmark-offline: ## Run deterministic anchored retrieval benchmark
+	bash scripts/eval.sh
 
 experiment: ## Run ablation experiments
 	bash scripts/experiment.sh
