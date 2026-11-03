@@ -4,7 +4,8 @@
 |---|---|---|
 | [README](../README.md) | Installation, quickstart, API | Current |
 | [README 中文](README.zh-CN.md) | 中文使用入口 | Current |
-| [Architecture V0.3](architecture-v0.3.md) | DocumentIR, spans, provenance, strict evaluator | Current |
+| [Architecture V0.4](architecture-v0.4.md) | Markdown/HTML structure-aware Hybrid Chunking and overflow policies | Current |
+| [Architecture V0.3](architecture-v0.3.md) | DocumentIR, spans, provenance, strict evaluator | Previous baseline |
 | [Usage](usage.md) | CLI flags, examples, tokenizer and format behavior | Current |
 | [Development](development.md) | Repository ownership, tests, CI and contribution protocol | Current |
 | [Architecture V0.2.1](architecture-v0.2.1.md) | Historical correctness baseline | Historical |

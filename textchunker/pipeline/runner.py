@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ..core.contracts import ChunkRecord, ChunkingResult
 from ..core.models import DocumentIR, chunk_digest
 from ..core.spans import Span
 from ..evaluation import evaluate_correctness
+from ..evaluation.structure import evaluate_structure
 from ..exceptions import ChunkerError
 from .. import chunkers as _builtin_chunkers  # noqa: F401 - register builtins
 from ..factory import create_chunker
@@ -43,12 +46,22 @@ def run_chunking(
         tokenizer = CharacterTokenizer()
 
     chunker = create_chunker(config, tokenizer=tokenizer)
-    chunks = chunker.chunk(document.text)
+    chunks = (chunker.chunk_document(document)
+              if hasattr(chunker, "chunk_document")
+              else chunker.chunk(document.text))
     max_size = int(config.common.get("chunk_size", 512))
     report = evaluate_correctness(
         document.text, chunks, tokenizer.count, max_size,
         require_full_coverage=config.common.get("max_chunks") is None,
     )
+    if config.name == "hybrid":
+        issues = evaluate_structure(document, chunks, tokenizer.count, max_size)
+        if issues:
+            report = replace(
+                report,
+                ok=report.ok and not any(d.severity == "error" for d in issues),
+                diagnostics=report.diagnostics + issues,
+            )
     if strict and not report.ok:
         problems = ", ".join(
             d.code for d in report.diagnostics if d.severity == "error"

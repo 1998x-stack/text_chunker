@@ -1,0 +1,25 @@
+# Structure-aware Hybrid configuration. Python >=3.10; install .[structure].
+project:
+  name: textchunker-hybrid
+  visualize: false
+  export_format: jsonl
+
+logging:
+  level: INFO
+  log_dir: logs/
+
+io:
+  input_path: ./sample.txt
+  output_path: ./out/hybrid.jsonl
+
+strategy:
+  name: hybrid
+  common:
+    chunk_size: 512
+    chunk_overlap: 64
+    max_chunks: null
+    tokenizer: char
+  hybrid:
+    # 'split': deterministic fallback + ATOMIC_OVERFLOW warning
+    # 'error': fail instead of breaking an oversized code block or table
+    oversized_element: split

@@ -1,10 +1,10 @@
 # Text-Chunker
 
-Source-traceable text chunking for RAG experiments and indexing. Supports five strategies and a strict **DocumentIR → ChunkingResult → independent evaluation** pipeline.
+Source-traceable text chunking for RAG experiments and indexing. Supports six strategies and a strict **DocumentIR → ChunkingResult → independent evaluation** pipeline.
 
-[中文文档](docs/README.zh-CN.md) · [Architecture](docs/architecture-v0.3.md) · [Documentation index](docs/INDEX.md) · [Changelog](CHANGELOG.md)
+[中文文档](docs/README.zh-CN.md) · [Architecture V0.4](docs/architecture-v0.4.md) · [Documentation index](docs/INDEX.md) · [Changelog](CHANGELOG.md)
 
-**Status:** V0.3 implemented. Markdown support is a lossless line-block parser, **not** a full AST. HTML and PDF preserve extracted-text provenance, but cannot yet map spans to original DOM nodes, PDF glyph coordinates or bounding boxes. Structure-aware Hybrid Chunking is planned for V0.4. No retrieval-quality improvement claims are made.
+**Status:** V0.4 adds MarkdownIt token-backed structural blocks, HTML DOM blocks and the sixth **Hybrid** strategy. Original Unicode source offsets remain exact for Markdown/TXT; HTML raw character positions are unknown (only DOM block identifiers are exposed). PDF page anchors are supported but glyph coordinates, Docling end-to-end integration and retrieval-quality evaluation remain future work. No retrieval-quality improvement is claimed.
 
 ## Install
 
@@ -19,6 +19,18 @@ python -m pip install -e ".[semantic]"  # sentence-transformers
 python -m pip install -e ".[llm]"       # providers and transformer stack
 ```
 
+## V0.4 Structure-aware Hybrid
+
+The `hybrid` strategy consumes canonical DocumentIR blocks: section headings set hard boundaries, while fenced code and tables remain intact whenever they fit the tokenizer budget. Oversized elements can be split with an `ATOMIC_OVERFLOW` warning, or rejected by policy. It never invents original source bytes or rendered document layout positions.
+
+```bash
+python -m pip install -e ".[token,structure,dev]"
+python -m textchunker.cli --config configs/hybrid.yaml \
+    --input sample.txt --output out/hybrid.jsonl --strategy hybrid --tokenizer char
+```
+
+See [V0.4 architecture and acceptance rules](docs/architecture-v0.4.md).
+
 ## CLI
 
 ```bash
@@ -31,7 +43,7 @@ python -m textchunker.cli --input docs/ --output out/docs.jsonl \
     --strategy recursive --tokenizer tiktoken:cl100k_base
 ```
 
-The CLI also accepts `--strategy fixed|recursive|structure|semantic|llm`, `--max-chunks`, `--stats`, `--visualize` and `--config`; run `python -m textchunker.cli --help` for the full list. The default YAML enables preview output; override it with your own configuration for automated runs.
+The CLI also accepts `--strategy fixed|recursive|structure|hybrid|semantic|llm`, `--max-chunks`, `--stats`, `--visualize` and `--config`; run `python -m textchunker.cli --help` for the full list. The default YAML enables preview output; override it with your own configuration for automated runs.
 
 **Token units:** `--tokenizer char` counts Unicode code points. `tiktoken:cl100k_base` and `hf:<model>` require their corresponding dependencies. `legacy` defaults to cl100k_base when installed, else character count. Fixed mode with `use_tokens: false` always uses character units.
 
@@ -64,24 +76,24 @@ An existing direct interface `create_chunker(config).chunk(text)` is preserved. 
 ```text
 readers / parsers
     → DocumentIR(text, blocks, SourceMap)
-    → chunker registry (fixed/recursive/structure/semantic/llm)
+    → chunker registry (fixed/recursive/structure/hybrid/semantic/llm)
     → ChunkRecord + source locations
     → independent correctness evaluator
     → JSONL / TXT / reports
 ```
 
-`DocumentIR.text` is the canonical Python Unicode string and `Span(start,end)` is half-open in **Unicode code points, not UTF-8 bytes**. Plain TXT/Markdown use exact source-character mapping; HTML/PDF extraction sets raw source spans to null. PDF retains 1-based page anchors, not page geometry.
+`DocumentIR.text` is the canonical Python Unicode string and `Span(start,end)` is half-open in **Unicode code points, not UTF-8 bytes**. Plain TXT/Markdown use exact source-character mapping; HTML/PDF extraction sets raw source spans to null. HTML DOM block IDs are not raw character offsets. PDF retains 1-based page anchors, not page geometry.
 
 ## Code layout
 
 ```text
 textchunker/
   core/          # DocumentIR, spans, contracts, validation and budgets
-  parsers/       # text, Markdown line blocks, HTML extraction, PDF pages
+  parsers/       # text, MarkdownIt blocks, HTML DOM blocks, PDF pages
   tokenizers/    # char, legacy, tiktoken, HF adapters
-  chunkers/      # five algorithms
+  chunkers/      # six algorithms
   pipeline/      # DocumentIR-first runner
-  evaluation/    # independent integrity evaluation
+  evaluation/    # independent integrity and structural evaluation
   providers/     # optional embedding and LLM providers
   experiments/   # historical ablations (legacy metrics, see below)
   cli.py, export.py, readers.py, config.py, types.py
@@ -104,6 +116,6 @@ Old benchmark percentages over 100% called “coverage” actually measured outp
 
 ## Documentation
 
-See [documentation index](docs/INDEX.md), [CLI and configuration](docs/usage.md), [architecture](docs/architecture-v0.3.md), [development and CI](docs/development.md), and [legacy strategy research](docs/strategy-guide.md).
+See [documentation index](docs/INDEX.md), [CLI and configuration](docs/usage.md), [V0.4 architecture](docs/architecture-v0.4.md), [development and CI](docs/development.md), and [legacy strategy research](docs/strategy-guide.md).
 
 License: [MIT](LICENSE).

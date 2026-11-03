@@ -49,3 +49,14 @@ An empty input produces no chunk lines; the document's empty status is not repre
 ## Compatibility and non-goals
 
 The old `create_chunker(cfg).chunk(str)` API still works. V0.3 is not a retrieval evaluation product, HTML DOM span locator or full PDF layout parser. Historic benchmark “coverage” is not unique source coverage.
+
+## V0.4 Hybrid and structural provenance
+
+```bash
+python -m textchunker.cli --config configs/hybrid.yaml --input doc.md \
+  --output out/doc.jsonl --strategy hybrid --tokenizer tiktoken:cl100k_base
+```
+
+With HTML inputs, the CLI now passes raw HTML to the DOM parser and exports normalized canonical text plus per-block `dom:<index>:<tag>` anchors; **no raw HTML character spans** are invented. PDF page text is extracted once and page positions remain one-based. YAML `hybrid.oversized_element` chooses `split` (default, warning) or `error` (fail closed) for code/table over-budget elements.
+
+With Markdown inputs, the Hybrid strategy requires the optional `markdown-it-py` package under `[structure]`. If not installed, it rejects the operation rather than claiming structural guarantees based on a weaker fallback.

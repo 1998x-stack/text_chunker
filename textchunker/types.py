@@ -39,6 +39,7 @@ class StrategyConfig:
     fixed: Dict[str, Any] = field(default_factory=dict)
     structure: Dict[str, Any] = field(default_factory=dict)
     llm: Dict[str, Any] = field(default_factory=dict)
+    hybrid: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

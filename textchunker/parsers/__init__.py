@@ -1,4 +1,4 @@
-"""Adapters to DocumentIR. Markdown AST and full PDF layout arrive in v0.4."""
+"""Adapters to DocumentIR. MarkdownIt blocks and HTML DOM are supported; PDF layout geometry is deferred."""
 
 from .text import parse_text, parse_extracted_text
 from .markdown import parse_markdown

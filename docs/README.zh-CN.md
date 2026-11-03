@@ -2,7 +2,7 @@
 
 本仓库提供适用于 RAG 数据预处理的可追溯文本分块：固定窗口、递归、标题结构、语义和 LLM 五种策略。V0.3 已支持 `DocumentIR`、来源映射、显式 Tokenizer、独立的完整性评估和稳定 Chunk ID。
 
-**边界说明：** Markdown 当前为保留原文的逐行结构解析，不是完整 Markdown AST；HTML/PDF 的提取文本保留来源 URI，PDF 可保留页码，但不能将字符位置精确映射到原始 DOM/PDF 坐标。不要把这些能力误解为 V0.4 已完成。
+**V0.4 已实现：** MarkdownIt 结构块、HTML DOM 元素块、Hybrid 分块和独立结构完整性检查。代码块、表格在预算内保持整体；过大元素允许显式降级或直接拒绝。Markdown/TXT 的字符位置保持原始映射，HTML 仅保存 DOM 块标识，PDF 仅保存页码（不包含 PDF 文字框坐标）。
 
 ## 安装
 
@@ -39,6 +39,16 @@ assert result.report.ok and result.complete
 - `max_chunks` 的截断结果会被标记为 `complete=False`。
 - 原文偏移是 Python 字符索引，不是 UTF-8 字节数。
 - 语义 / LLM 依赖和外部模型服务可能引入额外资源或成本，不会默认启用。
-- V0.4 目标：结构感知 Hybrid Chunker，优先保护代码块、标题、表格等元素；优先保证可追溯、无数据丢失和分块预算约束。
+- V0.4 的 `hybrid` 策略支持标题隔离、表格/代码块原子保护、超长元素诊断及严格预算。Docling 的真实对象解析、复杂 PDF 布局和检索准确率提升仍需要后续独立验收。
 
 更多内容：[文档目录](INDEX.md) · [详细用法](usage.md) · [V0.3 架构](architecture-v0.3.md)。
+
+## V0.4 Hybrid 命令
+
+```bash
+pip install -e ".[structure,token,dev]"
+python -m textchunker.cli --config configs/hybrid.yaml --input sample.txt \
+  --output out/hybrid.jsonl --strategy hybrid --tokenizer char
+```
+
+参见 [V0.4 架构与验收说明](architecture-v0.4.md)。

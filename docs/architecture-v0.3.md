@@ -1,5 +1,7 @@
 # V0.3 — DocumentIR, Tokenizer and independently verified chunk results
 
+> Historical baseline: V0.4 extends these contracts with MarkdownIt/HTML structural blocks and Hybrid; see [V0.4 architecture](architecture-v0.4.md).
+
 V0.3 introduces DocumentIR-first APIs while preserving legacy strategy names
 and direct chunker.chunk(str) usage. This document describes shipped APIs,
 not planned V0.4 structure-aware functionality.

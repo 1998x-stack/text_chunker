@@ -38,6 +38,8 @@ strategy:
   structure:
     prefer: md
     sub_split: true
+  hybrid:
+    oversized_element: split
   llm:
     provider: dashscope
     llm_model: qwen-max

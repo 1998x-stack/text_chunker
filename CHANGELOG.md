@@ -2,6 +2,15 @@
 
 The changelog is limited to changes present in code. Historical benchmark results are not treated as acceptance evidence.
 
+## 0.4.0 — Structure-aware Hybrid chunking
+
+- MarkdownIt CommonMark/GFM table token-backed structural blocks, with exact original Unicode source offsets, fenced-code and nested-list awareness.
+- DOM-aware HTML extraction into typed blocks and per-block provenance identifiers; raw DOM character offsets remain intentionally unknown.
+- New `hybrid` strategy: strict heading boundaries, budget-first block packing, code/table atomicity, bounded overlaps and deterministic over-budget fallback.
+- Independent structural evaluation with `ATOMIC_SPLIT`, `ATOMIC_OVERFLOW` and `HEADING_CROSSING` diagnostics.
+- Structure-preserving CLI ingestion without re-reading PDF pages, with old reader API retained.
+- Offline regression, integration and CLI E2E coverage for Markdown/HTML/PDF provenance.
+
 ## 0.3.0 — DocumentIR and independent correctness verification
 
 - Canonical `DocumentIR`, `DocumentBlock`, `SourceMap`, stable document/chunk IDs.

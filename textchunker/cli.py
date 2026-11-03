@@ -10,7 +10,7 @@ from loguru import logger
 from .config import build_argparser, load_yaml, merge_cli, to_project_config
 from .export import save_result_jsonl, save_txt_dir
 from .log_config import setup_logging
-from .parsers import parse_extracted_text, parse_markdown, parse_pdf_pages, parse_text
+from .parsers import parse_html, parse_extracted_text, parse_markdown, parse_pdf_pages, parse_text
 from .pipeline import run_chunking
 from .readers import load_inputs
 from .settings import Settings
@@ -26,13 +26,14 @@ def _parse_input(doc):
     if ext == ".md":
         return parse_markdown(doc.text, doc.path)
     if doc.meta.get("format") == "html":
-        return parse_extracted_text(doc.text, doc.path, "html")
+        return (parse_html(doc.text, doc.path)
+                if doc.meta.get("raw_html")
+                else parse_extracted_text(doc.text, doc.path, "html"))
     if doc.meta.get("format") == "pdf":
-        # TODO(v0.4): remove duplicated PDF extraction in load_inputs.
-        from pypdf import PdfReader
-        reader = PdfReader(doc.path)
-        pages = [page.extract_text() or "" for page in reader.pages]
-        return parse_pdf_pages(pages, doc.path)
+        if "pages" in doc.meta:
+            return parse_pdf_pages(doc.meta["pages"], doc.path)
+        # Support external FileDoc callers that provide extracted PDF text.
+        return parse_extracted_text(doc.text, doc.path, "pdf")
     return parse_text(doc.text, doc.path)
 
 
@@ -59,7 +60,8 @@ def main() -> None:
         with open(output_path, "w", encoding="utf-8"):
             pass
 
-    for file_doc in load_inputs(cfg.io.get("input_path")):
+    for file_doc in load_inputs(cfg.io.get("input_path"),
+                                preserve_structure=True):
         document = _parse_input(file_doc)
         logger.info("Processing: {}", document.source_uri)
         started = time.perf_counter()

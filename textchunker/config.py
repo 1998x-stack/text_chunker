@@ -23,6 +23,7 @@ def to_project_config(d: Dict[str, Any]) -> ProjectConfig:
         fixed=strat.get("fixed", {}),
         structure=strat.get("structure", {}),
         llm=strat.get("llm", {}),
+        hybrid=strat.get("hybrid", {}),
     )
     return ProjectConfig(
         project=d.get("project", {}),
@@ -39,7 +40,7 @@ def build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--input", type=str, default=None, help="输入文件或目录，覆盖 YAML")
     p.add_argument("--output", type=str, default=None, help="输出路径，覆盖 YAML")
     p.add_argument("--strategy", type=str, default=None,
-                   help="策略名：fixed/semantic/recursive/structure/llm")
+                   help="策略名：fixed/semantic/recursive/structure/hybrid/llm")
     p.add_argument("--visualize", action="store_true",
                    help="可视化模式（rich）")
     p.add_argument("--max-chunks", type=int, default=None,
